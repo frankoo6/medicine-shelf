@@ -1,7 +1,7 @@
 // Medicine Shelf offline support.
 // When you change any file, bump CACHE (v1 -> v2) so phones pick up the new version.
-const CACHE = 'medicine-shelf-v7';
-const FILES = ['./', './index.html', './shelf-math.js', './flyer.html', './qrcode.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+const CACHE = 'medicine-shelf-v8';
+const FILES = ['./', './index.html', './shelf-math.js', './app.js', './flyer.html', './flyer.js', './qrcode.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   // cache: 'reload' skips the browser's own HTTP cache (GitHub Pages lets it keep files ~10 minutes),

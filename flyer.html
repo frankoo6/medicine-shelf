@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Medicine Shelf Flyer</title>
 <style>
 /* Layout: one letter-size page — headline, big QR code, three steps, privacy line, "shared by" blank. Controls above it are screen-only. */
@@ -82,21 +83,6 @@ ol b { display: block; }
 </main>
 
 <script src="qrcode.js"></script>
-<script>
-(() => {
-  const input = document.getElementById('url');
-  const here = new URL('./', location.href);
-  input.value = location.protocol === 'file:' ? 'https://example.org/medicine-shelf/' : here.href;
-  function draw() {
-    const url = input.value.trim() || here.href;
-    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
-    document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
-    document.getElementById('urlText').textContent = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  }
-  input.addEventListener('input', draw);
-  document.getElementById('print').addEventListener('click', () => window.print());
-  draw();
-})();
-</script>
+<script src="flyer.js"></script>
 </body>
 </html>

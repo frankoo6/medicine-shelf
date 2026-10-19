@@ -478,7 +478,12 @@ details[open] > summary { margin-bottom: 12px; }
   }
 
   function renderCards() {
-    const rows = state.meds.map((m) => ({ m, l: live(m) }));
+    // A medicine whose saved data is damaged (e.g. no count date) can't be worked out. It gets its own
+    // "needs fixing" card instead of breaking every card on the page.
+    const rows = [], broken = [];
+    for (const m of state.meds) {
+      try { rows.push({ m, l: live(m) }); } catch (e) { broken.push(m); }
+    }
     const inView = rows.filter((r) => filter === 'all' || r.m.personId === filter);
     $('cNow').textContent = inView.filter((r) => r.l.status === 'now').length;
     $('cSoon').textContent = inView.filter((r) => r.l.status === 'soon').length;
@@ -493,7 +498,10 @@ details[open] > summary { margin-bottom: 12px; }
         el('p', { class: 'note' }, 'Grab the bottle. Enter the name, how many are taken a day and how many are in it right now. The app works out the rest.'),
         el('button', { class: 'primary', type: 'button', onclick: () => openMedForm() }, 'Add a medicine')));
     }
-    for (const { m, l } of inView) list.append(card(m, l));
+    for (const m of broken) if (filter === 'all' || m.personId === filter) list.append(brokenCard(m));
+    for (const { m, l } of inView) {
+      try { list.append(card(m, l)); } catch (e) { list.append(brokenCard(m)); }
+    }
     const last = state.meta.lastBackup;
     const realMeds = state.meds.filter((m) => !m.example).length;
     const changedSince = (state.meta.changesSinceBackup || 0) >= 5;
@@ -564,6 +572,21 @@ details[open] > summary { margin-bottom: 12px; }
       body);
   }
 
+  // Shown in place of a normal card when a medicine's saved data is damaged.
+  function brokenCard(m) {
+    const name = typeof m.name === 'string' && m.name ? m.name : 'A medicine';
+    const body = el('div', { class: 'label-body' },
+      el('div', { class: 'warn-line hard' }, `The saved count for ${name} is damaged, so its dates can't be worked out. Count what you have now to fix it, or remove it.`),
+      el('div', { class: 'actions' },
+        el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Count it now'),
+        el('button', { class: 'link', type: 'button', onclick: () => {
+          if (!confirm(`Remove ${name}? This can't be undone.`)) return;
+          state.meds = state.meds.filter((x) => x !== m); save(); render(); done(`Removed ${name}.`);
+        } }, 'Remove')));
+    if (openAction && openAction.id === m.id) body.append(actionForm(m, null, 'recount'));
+    return el('article', { class: 'label', tabindex: '-1', 'data-key': `${m.id}:card` },
+      el('div', { class: 'label-head' }, el('h3', {}, name), el('span', { class: 'pill now' }, 'Needs fixing')), body);
+  }
   function setStage(m, stage) {
     const before = m.refill ? { ...m.refill } : null;
     const t = today();
@@ -583,13 +606,13 @@ details[open] > summary { margin-bottom: 12px; }
   function actionForm(m, l, kind) {
     const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
     const t = today();
-    const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : fmt1(l.est) });
+    const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : (l ? fmt1(l.est) : '') });
     const date = el('input', { id: did, type: 'date', value: t, max: t });
     const preview = el('p', { class: 'note', style: 'flex-basis:100%', 'aria-live': 'polite' });
     const updatePreview = () => {
       const q = Number(qty.value), d = date.value;
       if (kind !== 'refill' || qty.value === '' || !(q > 0) || !d) { preview.textContent = ''; return; }
-      const est = SM.estimateOn(m, d);
+      let est; try { est = SM.estimateOn(m, d); } catch (e) { preview.textContent = ''; return; }
       preview.textContent = `${isScheduled(m) ? '≈ ' : ''}${fmt1(est)} left + ${fmt1(q)} picked up = ${fmt1(est + q)}`;
     };
     qty.addEventListener('input', updatePreview); date.addEventListener('input', updatePreview); updatePreview();
@@ -599,10 +622,10 @@ details[open] > summary { margin-bottom: 12px; }
       if (qty.value === '' || !(q >= 0) || !d) return toast('Enter a number and a date.');
       if (kind === 'refill' && !(q > 0)) return toast('Enter how many you picked up. It has to be more than zero.');
       if (d > today()) return toast("The date can't be in the future.");
-      if (d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
+      if (SM.isDateStr(m.countedOn) && d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
       const before = { onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, refill: m.refill ? { ...m.refill } : null };
-      const est = SM.estimateOn(m, d);
       if (kind === 'refill') {
+        const est = SM.estimateOn(m, d);
         Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, lastFillQty: q, confirmedRefill: null, refill: null });
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
@@ -749,7 +772,8 @@ details[open] > summary { margin-bottom: 12px; }
   function buildIcs(meds) {
     const t = today(), lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Medicine Shelf//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
     for (const m of meds) {
-      const p = plan(m); if (!p.orderOn) continue;
+      let p; try { p = plan(m); } catch (e) { continue; } // skip a medicine with damaged data
+      if (!p.orderOn) continue;
       const who = personName(m.personId);
       const details = [`Runs out about ${nice(p.runOut)}.`, m.pharmacy && `Pharmacy: ${m.pharmacy}`, m.pharmacyPhone && `Phone: ${m.pharmacyPhone}`, m.rxNumber && `Rx: ${m.rxNumber}`].filter(Boolean).join('\n');
       lines.push(...vevent(`${m.id}-order-${p.orderOn}`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));

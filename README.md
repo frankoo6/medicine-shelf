@@ -1,12 +1,14 @@
 # Medicine Shelf
 
-A free, private web app that families install on their phones to track how much medicine they have and when to reorder. It has no accounts and no server, and nothing a family enters ever leaves their phone.
+A free, private web app that families install on their phones to track how much medicine they have and when to reorder. It has no accounts and no server. Medicine Shelf never sends a family's list anywhere; only what they choose to export (a backup file, a calendar entry, a printout) leaves the app.
 
 ## What's in this folder
 
 | File | What it is |
 |---|---|
 | `index.html` | The app |
+| `shelf-math.js` | The date and supply math, kept separate so it can be tested |
+| `tests/run.mjs` | Tests for that math: `TZ=America/New_York node tests/run.mjs` (no installs needed) |
 | `manifest.webmanifest`, `icon-*.png`, `apple-touch-icon.png` | Let phones install it to the home screen with its own icon |
 | `sw.js` | Lets the app open with no internet |
 | `flyer.html` + `qrcode.js` | Printable one-page flyer with a QR code that points to wherever you host the app |
@@ -27,7 +29,7 @@ Open `flyer.html` from your hosted link (for example `https://yourname.github.io
 
 ## Updating the app later
 
-Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and change `medicine-shelf-v1` to `medicine-shelf-v2` (then v3, and so on). Phones pick up the new version the second time they open the app.
+Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and bump the number in `medicine-shelf-v3` (to v4, then v5, and so on). Run the tests first. Phones pick up the new version the second time they open the app.
 
 Families' data is not affected by updates. It lives in their browser under the key `medicine-shelf.v1`. If you ever change the data format, keep reading the old one.
 
@@ -38,7 +40,8 @@ Families' data is not affected by updates. It lives in their browser under the k
 - **No sync.** Two caregivers on two phones keep separate lists. Restoring a backup on another phone copies the list across, but changes don't flow back.
 - **Calendar reminders are one-time files.** "Add to calendar" makes a calendar file for the current order date. After a refill the date moves, so add it again and delete the old event. Apple Calendar keeps the 9 a.m. alert in the file; Google Calendar on Android may ignore it and use its own default alert for all-day events.
 - **Printing from the home-screen app** works on most phones but varies by model. If the Print button does nothing, open the same link in the regular browser and print from there.
-- **Dates are estimates.** Insurance refill rules vary; the default assumes a refill is allowed after 75% of the last fill is used. Users can change this per medicine.
+- **Dates are estimates.** Insurance refill rules vary; the default assumes a refill is allowed after 75% of the last fill is used. Users can change this per medicine, or enter the next refill date their pharmacy gave them, which replaces the estimate until the next pickup.
+- **Exports are copies.** Backup files, calendar entries and printed lists contain medicine names and dates. They are outside the app's protection once made.
 
 ## Before a doctor's office hands it out
 

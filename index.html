@@ -125,6 +125,8 @@ details[open] > summary { margin-bottom: 12px; }
 .tools { display: grid; gap: 4px; }
 .tools .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: .95rem; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgb(0 0 0 / .2); z-index: 10; }
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-undo { background: transparent; color: var(--bg); border: 1px solid var(--bg); border-radius: 999px; padding: 4px 14px; min-height: 32px; font-size: .9rem; font-weight: 700; }
 .file-btn { position: relative; display: inline-flex; align-items: center; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
@@ -238,17 +240,19 @@ details[open] > summary { margin-bottom: 12px; }
         <label class="field" for="f_strength"><span>Strength</span><input id="f_strength" autocomplete="off" placeholder="e.g. 500 mg"></label>
         <label class="field" for="f_unit"><span>Counted as</span>
           <select id="f_unit"><option>tablets</option><option>capsules</option><option>mL</option><option>patches</option><option>inhalers</option><option>doses</option></select></label>
-        <label class="field" for="f_perDay"><span>How many a day</span><input id="f_perDay" type="number" min="0" step="0.25" inputmode="decimal" placeholder="e.g. 2"></label>
+        <label class="field" for="f_perDay"><span>How many a day</span><input id="f_perDay" type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2"></label>
         <label class="check" for="f_prn" style="align-self:end"><input id="f_prn" type="checkbox"> Taken only as needed</label>
         <label class="field" for="f_min" id="minWrap" hidden><span>Reorder when fewer than</span><input id="f_min" type="number" min="0" inputmode="numeric" placeholder="e.g. 10"></label>
-        <label class="field" for="f_onHand"><span>How many you have right now</span><input id="f_onHand" type="number" min="0" step="0.5" inputmode="decimal" required></label>
-        <label class="field" for="f_countedOn"><span>Date counted</span><input id="f_countedOn" type="date" required></label>
+        <label class="field" for="f_onHand" id="onHandWrap"><span>How many you have right now</span><input id="f_onHand" type="number" min="0" step="any" inputmode="decimal" required></label>
+        <label class="field" for="f_countedOn" id="countedOnWrap"><span>Date counted</span><input id="f_countedOn" type="date" required></label>
+        <p class="note" id="countNote" hidden style="align-self:end">The count isn't changed here. To change it, use Recount or Picked up a refill on the card.</p>
         <label class="field" for="f_instructions"><span>How it's taken <small>(for the medication list)</small></span><input id="f_instructions" autocomplete="off" placeholder="e.g. 1 tablet twice a day with food"></label>
       </div>
       <details id="rxDetails">
         <summary>Prescription and pharmacy</summary>
         <div class="grid2">
-          <label class="field" for="f_lastFill"><span>Last picked up</span><input id="f_lastFill" type="date"><small>Used to work out when insurance allows the next refill.</small></label>
+          <label class="field" for="f_lastFill"><span>Last picked up</span><input id="f_lastFill" type="date"><small>Used to estimate when insurance allows the next refill.</small></label>
+          <label class="field" for="f_confirmed"><span>Next refill date the pharmacy gave you <small>(optional)</small></span><input id="f_confirmed" type="date"><small>If you know it, this replaces the estimate until your next pickup.</small></label>
           <label class="field" for="f_fillDays"><span>Each fill lasts</span>
             <select id="f_fillDays"><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label>
           <label class="field" for="f_refills"><span>Refills left</span><input id="f_refills" type="number" min="0" inputmode="numeric" placeholder="On the bottle label"></label>
@@ -291,14 +295,16 @@ details[open] > summary { margin-bottom: 12px; }
         <summary>How the dates are worked out</summary>
         <div class="note" style="display:grid;gap:8px">
           <p>The count goes down by the daily amount from the day you last counted, so you only need to update it when you pick up a refill or recount.</p>
-          <p><b>Order on</b> is the day you'd run out, minus the days your pharmacy needs and a few extra days to be safe. It is never earlier than the day insurance is likely to allow the refill, based on when you last picked it up.</p>
+          <p><b>Order on</b> is the day you'd run out, minus the days your pharmacy needs and a few extra days to be safe. It is never earlier than the day insurance is likely to allow the refill. That day is an estimate based on when you last picked it up, unless you enter the date the pharmacy gave you.</p>
+          <p>Medicines that need a new prescription each fill (or have no refills left) show <b>Contact prescriber</b> a week before the order date, so the office has time to send it.</p>
           <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count falls below the number you choose.</p>
         </div>
       </details>
       <details>
         <summary>Privacy and limits</summary>
         <div class="note" style="display:grid;gap:8px">
-          <p>Your list is stored only in this browser on this device. It is not sent to any server, your doctor or the people who host this page. Nobody can see it unless they have your phone.</p>
+          <p>Your list is stored only in this browser on this device. Medicine Shelf does not send it to any server, your doctor or the people who host this page.</p>
+          <p>Anything you export leaves the app: backup files, calendar entries and printed lists can show your medicines to whoever sees them. Keep them somewhere private.</p>
           <p>Because it lives on this device, it does not sync between phones, and clearing your browser data erases it. Save a backup now and then.</p>
           <p>Medicine Shelf tracks supply only. It does not give medical or dosing advice, and its dates are estimates. Always follow your prescription label, your pharmacist and your doctor.</p>
         </div>
@@ -321,11 +327,12 @@ details[open] > summary { margin-bottom: 12px; }
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+<script src="shelf-math.js"></script>
 <script>
 (() => {
   'use strict';
   const KEY = 'medicine-shelf.v1';
-  const DEFAULTS = { leadDays: 3, bufferDays: 7, eligiblePct: 75, fillDays: 30 };
+  const DEFAULTS = window.ShelfMath.DEFAULTS;
   const $ = (id) => document.getElementById(id);
 
   // ---------- storage ----------
@@ -342,51 +349,22 @@ details[open] > summary { margin-bottom: 12px; }
     catch (e) { storageOK = false; $('storageWarn').hidden = false; return false; }
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  // Counts real edits since the last backup, so the backup reminder can come back after several changes.
+  const noteChange = () => { state.meta.changesSinceBackup = (state.meta.changesSinceBackup || 0) + 1; };
 
-  // ---------- dates as local calendar days ----------
-  const pad = (n) => String(n).padStart(2, '0');
-  const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+  // ---------- dates and supply math live in shelf-math.js ----------
+  const SM = window.ShelfMath;
+  const { toStr, parse, addDays, diff, maxDate, val, isScheduled } = SM;
   const today = () => toStr(new Date());
-  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return toStr(d); };
-  const diff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
-  const maxDate = (a, b) => (!a ? b : !b ? a : a > b ? a : b);
   const nice = (s) => {
     if (!s) return '—';
     const d = parse(s);
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
   };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  const val = (m, k) => (m[k] ?? DEFAULTS[k]);
-  const isScheduled = (m) => !m.prn && m.perDay > 0;
   const personName = (id) => (state.people.find((p) => p.id === id) || {}).name || 'Someone';
-
-  // ---------- order math ----------
-  function plan(m) {
-    const out = { runOut: null, orderBy: null, eligible: null, orderOn: null, callDoctor: null, tight: false, needsScript: !!m.controlled || m.refillsLeft === 0 };
-    if (!isScheduled(m)) return out;
-    const fillQty = m.perDay * val(m, 'fillDays');
-    out.runOut = addDays(m.countedOn, Math.floor(m.onHand / m.perDay));
-    out.orderBy = addDays(out.runOut, -(val(m, 'leadDays') + val(m, 'bufferDays')));
-    if (m.lastFillDate) {
-      out.eligible = addDays(m.lastFillDate, Math.ceil((fillQty / m.perDay) * (val(m, 'eligiblePct') / 100)));
-      out.tight = out.eligible > addDays(out.runOut, -val(m, 'leadDays'));
-    }
-    out.orderOn = maxDate(out.orderBy, out.eligible);
-    if (out.needsScript) out.callDoctor = addDays(out.orderOn, -7);
-    return out;
-  }
-  function live(m) {
-    const t = today();
-    if (!isScheduled(m)) {
-      const status = m.minCount != null && m.onHand <= m.minCount ? 'now' : m.minCount != null && m.onHand <= m.minCount * 1.5 ? 'soon' : 'ok';
-      return { est: m.onHand, daysLeft: null, status, p: plan(m) };
-    }
-    const est = Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, t)));
-    const p = plan(m);
-    const status = p.orderOn <= t || (p.tight && p.orderBy <= t) ? 'now' : diff(t, p.orderOn) <= 14 ? 'soon' : 'ok';
-    return { est, daysLeft: Math.floor(est / m.perDay), status, p };
-  }
+  const plan = SM.plan;
+  const live = (m) => SM.live(m, today());
 
   // ---------- helpers ----------
   const el = (tag, attrs = {}, ...kids) => {
@@ -403,7 +381,12 @@ details[open] > summary { margin-bottom: 12px; }
   const fmt = (n) => (Number.isInteger(n) ? String(n) : (Math.round(n * 10) / 10).toString());
   const unitFor = (n, unit) => (n === 1 && /s$/.test(unit) ? unit.slice(0, -1) : unit);
   let toastTimer;
-  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200); }
+  const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
+  function toast(msg, undo) {
+    const t = $('toast'); t.replaceChildren(document.createTextNode(msg));
+    if (undo) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { clearTimeout(toastTimer); t.hidden = true; undo(); } }, 'Undo'));
+    t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), undo ? 9000 : 3200);
+  }
   function scrollTo(node) { node.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
   function downloadFile(name, text, type) {
     const blob = new Blob([text], { type });
@@ -459,7 +442,9 @@ details[open] > summary { margin-bottom: 12px; }
     }
     for (const { m, l } of inView) list.append(card(m, l));
     const last = state.meta.lastBackup;
-    $('backupNudge').hidden = !(state.meds.filter((m) => !m.example).length >= 2 && (!last || diff(last, today()) > 60));
+    const realMeds = state.meds.filter((m) => !m.example).length;
+    const changedSince = (state.meta.changesSinceBackup || 0) >= 5;
+    $('backupNudge').hidden = !(realMeds >= 1 && (!last || diff(last, today()) > 60 || changedSince));
   }
 
   function card(m, l) {
@@ -467,19 +452,28 @@ details[open] > summary { margin-bottom: 12px; }
     const facts = el('div', { class: 'facts' });
     const fact = (label, value, big) => el('div', { class: 'fact' + (big ? ' big' : '') }, el('span', { class: 'eyebrow' }, label), el('span', { class: 'v' }, value));
     if (isScheduled(m)) {
-      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Have now', `≈ ${Math.floor(l.est)}`));
+      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Estimated left', `≈ ${fmt1(l.est)}`));
     } else {
-      facts.append(fact('Have now', fmt(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
+      facts.append(fact('Last count', fmt1(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
     }
     const warns = [];
-    if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, `Insurance may not allow this refill until ${nice(p.eligible)}, but it runs out ${nice(p.runOut)}. Call the pharmacy now, or recount in case the number is off.`));
-    if (m.controlled) warns.push(el('div', { class: 'warn-line' }, `Needs a new prescription each time. Ask the doctor's office by ${nice(p.callDoctor)}.`));
-    else if (m.refillsLeft === 0) warns.push(el('div', { class: 'warn-line' }, `No refills left. Ask the doctor's office for a new prescription by ${p.callDoctor ? nice(p.callDoctor) : 'your next order'}.`));
-    if (isScheduled(m) && diff(m.countedOn, t) > 120) warns.push(el('div', { class: 'warn-line' }, `Last counted ${nice(m.countedOn)}. A quick recount keeps the dates right.`));
+    if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
+      ? `The pharmacy's next refill date is ${nice(p.eligible)}, but it runs out about ${nice(p.runOut)}. Call the pharmacy or prescriber now.`
+      : `Insurance may not allow this refill until about ${nice(p.eligible)} (an estimate), but it runs out about ${nice(p.runOut)}. Call the pharmacy now, or recount in case the number is off.`));
+    if (p.needsScript) {
+      const why = m.controlled ? 'Needs a new prescription each time.' : 'No refills left.';
+      const scriptNow = l.action === 'script' || (l.action === 'order' && !isScheduled(m));
+      let text;
+      if (!p.callDoctor) text = `${why} Contact the prescriber's office when you reorder, so it can send a new prescription.`;
+      else if (p.callDoctor <= t) text = `${why} Contact the prescriber's office now. The order date is ${p.orderOn <= t ? 'today' : nice(p.orderOn)}.`;
+      else text = `${why} Contact the prescriber's office by ${nice(p.callDoctor)}.`;
+      warns.push(el('div', { class: 'warn-line' + (scriptNow || (p.callDoctor && p.callDoctor <= t) ? ' hard' : '') }, text));
+    }
+    if (isScheduled(m) && diff(m.verifiedOn ?? m.countedOn, t) > 120) warns.push(el('div', { class: 'warn-line' }, `Last counted ${nice(m.verifiedOn ?? m.countedOn)}. A quick recount keeps the dates right.`));
 
     const meta = el('div', { class: 'meta' },
       isScheduled(m) ? el('span', {}, `${fmt(m.perDay)} ${unitFor(m.perDay, m.unit)}/day`) : null,
-      p.eligible ? el('span', {}, `Refill allowed from ${nice(p.eligible)}`) : null,
+      p.eligible ? el('span', {}, p.eligibleConfirmed ? `Pharmacy says refill from ${nice(p.eligible)}` : `Estimated refill eligibility ${nice(p.eligible)}`) : null,
       m.refillsLeft != null ? el('span', {}, `${m.refillsLeft} refill${m.refillsLeft === 1 ? '' : 's'} left`) : null,
       m.pharmacy ? el('span', {}, m.pharmacy) : null,
       m.pharmacyPhone ? el('a', { href: 'tel:' + m.pharmacyPhone.replace(/[^\d+]/g, '') }, m.pharmacyPhone) : null,
@@ -493,7 +487,7 @@ details[open] > summary { margin-bottom: 12px; }
 
     const body = el('div', { class: 'label-body' }, facts, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
-    const label = { now: 'Order now', soon: 'Order soon', ok: 'Stocked' }[l.status];
+    const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked' }[l.action];
     return el('article', { class: 'label' },
       el('div', { class: 'label-head' },
         el('h3', {}, m.name, m.strength ? ` ${m.strength}` : ''),
@@ -504,25 +498,39 @@ details[open] > summary { margin-bottom: 12px; }
   function toggleAction(id, kind) { openAction = openAction && openAction.id === id && openAction.kind === kind ? null : { id, kind }; render(); }
   function actionForm(m, l, kind) {
     const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
-    const qty = el('input', { id: qid, type: 'number', min: '0', step: '0.5', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : Math.floor(l.est) });
-    const date = el('input', { id: did, type: 'date', value: today() });
+    const t = today();
+    const qty = el('input', { id: qid, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : fmt1(l.est) });
+    const date = el('input', { id: did, type: 'date', value: t, max: t });
+    const preview = el('p', { class: 'note', style: 'flex-basis:100%', 'aria-live': 'polite' });
+    const updatePreview = () => {
+      const q = Number(qty.value), d = date.value;
+      if (kind !== 'refill' || qty.value === '' || !(q > 0) || !d) { preview.textContent = ''; return; }
+      const est = SM.estimateOn(m, d);
+      preview.textContent = `${isScheduled(m) ? '≈ ' : ''}${fmt1(est)} left + ${fmt1(q)} picked up = ${fmt1(est + q)}`;
+    };
+    qty.addEventListener('input', updatePreview); date.addEventListener('input', updatePreview); updatePreview();
     const go = el('button', { class: 'primary', type: 'button' }, kind === 'refill' ? 'Add to count' : 'Save count');
     go.addEventListener('click', () => {
-      const q = Number(qty.value);
-      if (qty.value === '' || !(q >= 0) || !date.value) return toast('Enter a number and a date.');
-      const d = date.value;
-      const est = isScheduled(m) ? Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, d))) : m.onHand;
+      const q = Number(qty.value), d = date.value;
+      if (qty.value === '' || !(q >= 0) || !d) return toast('Enter a number and a date.');
+      if (kind === 'refill' && !(q > 0)) return toast('Enter how many you picked up. It has to be more than zero.');
+      if (d > today()) return toast("The date can't be in the future.");
+      if (d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
+      const before = { onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null };
+      const est = SM.estimateOn(m, d);
       if (kind === 'refill') {
-        Object.assign(m, { onHand: est + q, countedOn: d, lastFillDate: d });
+        Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, confirmedRefill: null });
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
-      } else Object.assign(m, { onHand: q, countedOn: d });
-      openAction = null; save(); render();
-      toast(kind === 'refill' ? `Added ${fmt(q)} to ${m.name}.` : `Saved the count for ${m.name}.`);
+      } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
+      noteChange(); openAction = null; save(); render();
+      toast(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
+        Object.assign(m, before); save(); render(); toast(`Undone. ${m.name} is back to how it was.`);
+      });
     });
     return el('div', { class: 'inline' },
       el('label', { for: qid }, kind === 'refill' ? 'How many you picked up' : `How many ${m.unit} you have`, qty),
       el('label', { for: did }, kind === 'refill' ? 'Picked up on' : 'Counted on', date),
-      go, el('button', { type: 'button', onclick: () => { openAction = null; render(); } }, 'Cancel'));
+      go, el('button', { type: 'button', onclick: () => { openAction = null; render(); } }, 'Cancel'), preview);
   }
 
   function renderTools() {
@@ -570,9 +578,13 @@ details[open] > summary { margin-bottom: 12px; }
     F('person').value = m ? m.personId : filter !== 'all' ? filter : state.people[0].id;
     F('name').value = m?.name || ''; F('strength').value = m?.strength || ''; F('unit').value = m?.unit || 'tablets';
     F('perDay').value = m?.perDay ?? ''; F('prn').checked = !!m?.prn; F('min').value = m?.minCount ?? ''; $('minWrap').hidden = !F('prn').checked;
-    F('onHand').value = m ? Math.floor(live(m).est) : ''; F('countedOn').value = today();
+    // Editing never touches the count: only Recount and Picked up a refill change it.
+    F('onHand').value = ''; F('countedOn').value = today();
+    for (const id of ['onHandWrap', 'countedOnWrap']) $(id).hidden = !!m;
+    F('onHand').required = !m; F('countedOn').required = !m; $('countNote').hidden = !m;
     F('instructions').value = m?.instructions || '';
-    F('lastFill').value = m?.lastFillDate || ''; F('fillDays').value = String(val(m || {}, 'fillDays')); F('refills').value = m?.refillsLeft ?? '';
+    F('lastFill').value = m?.lastFillDate || ''; F('confirmed').value = m?.confirmedRefill || '';
+    F('fillDays').value = String(val(m || {}, 'fillDays')); F('refills').value = m?.refillsLeft ?? '';
     F('controlled').checked = !!m?.controlled; F('prescriber').value = m?.prescriber || ''; F('pharmacy').value = m?.pharmacy || '';
     F('pharmacyPhone').value = m?.pharmacyPhone || ''; F('rx').value = m?.rxNumber || '';
     F('lead').value = val(m || {}, 'leadDays'); F('buffer').value = val(m || {}, 'bufferDays'); F('pct').value = val(m || {}, 'eligiblePct');
@@ -592,18 +604,28 @@ details[open] > summary { margin-bottom: 12px; }
     const prn = F('prn').checked, perDay = numOrNull(F('perDay').value);
     if (!prn && !(perDay > 0)) { toast('Enter how many a day, or tick "Taken only as needed".'); F('perDay').focus(); return; }
     const prev = state.meds.find((x) => x.id === editingMed);
-    const m = Object.assign(prev || { id: uid() }, {
+    let count;
+    if (!prev) {
+      if (F('countedOn').value > today()) { toast("The date counted can't be in the future."); return; }
+      count = { onHand: Number(F('onHand').value), countedOn: F('countedOn').value, verifiedOn: F('countedOn').value };
+    } else if ((perDay || 0) !== prev.perDay || prn !== !!prev.prn) {
+      // The schedule changed: carry the count forward to today at the OLD rate, so past use isn't re-figured at the new one.
+      // Not a physical count, so verifiedOn (used for the "recount" reminder) stays as it was.
+      count = { onHand: SM.estimateOn(prev, today()), countedOn: today(), verifiedOn: prev.verifiedOn ?? prev.countedOn };
+    } else count = {};
+    const m = Object.assign(prev || { id: uid() }, count, {
       personId: F('person').value, name: F('name').value.trim(), strength: F('strength').value.trim(), unit: F('unit').value,
       perDay: perDay || 0, prn, minCount: prn ? numOrNull(F('min').value) : null,
-      onHand: Number(F('onHand').value), countedOn: F('countedOn').value, instructions: F('instructions').value.trim(),
-      lastFillDate: F('lastFill').value || null, fillDays: Number(F('fillDays').value), refillsLeft: numOrNull(F('refills').value),
+      instructions: F('instructions').value.trim(),
+      lastFillDate: F('lastFill').value || null, confirmedRefill: F('confirmed').value || null,
+      fillDays: Number(F('fillDays').value), refillsLeft: numOrNull(F('refills').value),
       controlled: F('controlled').checked, prescriber: F('prescriber').value.trim(), pharmacy: F('pharmacy').value.trim(),
       pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(),
       leadDays: numOrNull(F('lead').value) ?? DEFAULTS.leadDays, bufferDays: numOrNull(F('buffer').value) ?? DEFAULTS.bufferDays,
       eligiblePct: numOrNull(F('pct').value) ?? DEFAULTS.eligiblePct,
     });
     if (!prev) state.meds.push(m);
-    save(); $('medForm').hidden = true; filter = state.people.length > 1 && filter === 'all' ? 'all' : m.personId; render();
+    noteChange(); save(); $('medForm').hidden = true; filter = state.people.length > 1 && filter === 'all' ? 'all' : m.personId; render();
     toast(`Saved ${m.name}.`);
   });
 
@@ -650,7 +672,7 @@ details[open] > summary { margin-bottom: 12px; }
         await navigator.share({ files: [file], title: 'Medicine Shelf backup' });
       } else downloadFile(name, text, 'application/json');
     } catch (e) { if (e && e.name === 'AbortError') return; downloadFile(name, text, 'application/json'); }
-    state.meta.lastBackup = today(); save(); render(); toast('Backup saved. Keep it somewhere safe, like your email or cloud storage.');
+    state.meta.lastBackup = today(); state.meta.changesSinceBackup = 0; save(); render(); toast('Backup saved. Keep it somewhere safe, like your email or cloud storage.');
   }
   const onRestore = (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -659,7 +681,8 @@ details[open] > summary { margin-bottom: 12px; }
       try {
         const j = JSON.parse(r.result);
         if (j.app !== 'medicine-shelf' || !j.data || !Array.isArray(j.data.people) || !Array.isArray(j.data.meds)) throw new Error('not ours');
-        if (state.meds.length && !confirm(`Replace the list on this device with the backup from ${nice(String(j.exportedAt || '').slice(0, 10)) || 'that file'}?`)) return;
+        const np = j.data.people.length, nm = j.data.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';
+        if (!confirm(`This backup from ${when} has ${np} ${np === 1 ? 'person' : 'people'} and ${nm} ${nm === 1 ? 'medicine' : 'medicines'}: ${j.data.people.map((x) => x.name).join(', ') || 'none'}.\n\nReplace everything on this device with it?`)) return;
         state = Object.assign(blank(), j.data); filter = 'all'; view = 'home'; save(); render(); toast('Backup restored.');
       } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
     };

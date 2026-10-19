@@ -209,5 +209,19 @@ test('expired medicine keeps its refill in progress', () => {
   assert.equal(ready.refillStage, 'ready'); assert.equal(ready.stageSince, '2026-10-17');
 });
 
+test('picking up a refill is not a recount', () => {
+  const m = { perDay: 2, onHand: 20, countedOn: '2026-10-01', verifiedOn: '2026-06-01', refillsLeft: 2, refill: { stage: 'ready', requestedOn: '2026-10-05' } };
+  const r = SM.applyPickup(m, 180, '2026-10-06');
+  assert.equal(r.onHand, 190);                // 20 - 2x5 days + 180
+  assert.equal(r.countedOn, '2026-10-06');    // the countdown restarts from the pickup...
+  assert.equal(r.verifiedOn, '2026-06-01');   // ...but the last real count is unchanged
+  assert.equal(r.refillsLeft, 1);
+  assert.equal(r.refill, null);
+  // an older list with no verifiedOn keeps its count date as the last real count
+  assert.equal(SM.applyPickup({ perDay: 1, onHand: 5, countedOn: '2026-09-01' }, 30, '2026-09-03').verifiedOn, '2026-09-01');
+  // controlled medicines don't use up refills
+  assert.equal(SM.applyPickup({ ...m, controlled: true }, 30, '2026-10-06').refillsLeft, undefined);
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

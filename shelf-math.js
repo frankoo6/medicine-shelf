@@ -90,6 +90,18 @@
     return isScheduled(m) ? Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, d))) : m.onHand;
   }
 
+  // The changes "Picked up a refill" makes: the count becomes the estimate on that day plus what was picked up.
+  // countedOn moves (it's the starting point for the countdown), but verifiedOn does NOT: nobody physically
+  // counted what was already left, so the "time for a recount" reminder keeps its date.
+  function applyPickup(m, qty, d) {
+    const out = {
+      onHand: estimateOn(m, d) + qty, countedOn: d, verifiedOn: m.verifiedOn ?? m.countedOn,
+      lastFillDate: d, lastFillQty: qty, confirmedRefill: null, refill: null,
+    };
+    if (typeof m.refillsLeft === 'number' && !m.controlled) out.refillsLeft = Math.max(0, m.refillsLeft - 1);
+    return out;
+  }
+
   // ---- Checking data that comes from a backup file ----
 
   // Keeps the people and medicines a backup can safely load, fixes optional fields that are
@@ -136,7 +148,7 @@
       && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
   }
 
-  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
+  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

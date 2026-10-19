@@ -320,9 +320,7 @@
       if (SM.isDateStr(m.countedOn) && d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
       const before = { expiresOn: m.expiresOn ?? null, onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, refill: m.refill ? { ...m.refill } : null };
       if (kind === 'refill') {
-        const est = SM.estimateOn(m, d);
-        Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, lastFillQty: q, confirmedRefill: null, refill: null });
-        if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
+        Object.assign(m, SM.applyPickup(m, q, d));
         if (exp) m.expiresOn = exp.value || null;
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
       noteChange(); openAction = null; focusAfter = `${m.id}:${kind}`; save(); render();

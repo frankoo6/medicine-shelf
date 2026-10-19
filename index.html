@@ -763,9 +763,12 @@ details[open] > summary { margin-bottom: 12px; }
   }
   const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
   const ymd = (s) => s.replace(/-/g, '');
+  // Each medicine keeps the SAME event id (UID) every time it is added, with a higher SEQUENCE number,
+  // so calendars that follow the standard replace the old reminder instead of adding a second one.
   function vevent(id, date, summary, description) {
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-    return ['BEGIN:VEVENT', `UID:${id}@medicine-shelf`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(date)}`, `DTEND;VALUE=DATE:${ymd(addDays(date, 1))}`,
+    const sequence = Math.floor((Date.now() - Date.UTC(2026, 0, 1)) / 60000); // minutes since 2026: always rising
+    return ['BEGIN:VEVENT', `UID:${id}@medicine-shelf`, `SEQUENCE:${sequence}`, `DTSTAMP:${stamp}`, `LAST-MODIFIED:${stamp}`, `DTSTART;VALUE=DATE:${ymd(date)}`, `DTEND;VALUE=DATE:${ymd(addDays(date, 1))}`,
       `SUMMARY:${esc(summary)}`, `DESCRIPTION:${esc(description)}`, 'TRANSP:TRANSPARENT',
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(summary)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT'];
   }
@@ -776,8 +779,8 @@ details[open] > summary { margin-bottom: 12px; }
       if (!p.orderOn) continue;
       const who = personName(m.personId);
       const details = [`Runs out about ${nice(p.runOut)}.`, m.pharmacy && `Pharmacy: ${m.pharmacy}`, m.pharmacyPhone && `Phone: ${m.pharmacyPhone}`, m.rxNumber && `Rx: ${m.rxNumber}`].filter(Boolean).join('\n');
-      lines.push(...vevent(`${m.id}-order-${p.orderOn}`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));
-      if (p.needsScript) lines.push(...vevent(`${m.id}-script-${p.orderOn}`, maxDate(p.callDoctor, t), `Ask for a new ${m.name} prescription for ${who}`, `Order date is ${nice(p.orderOn)}.`));
+      lines.push(...vevent(`${m.id}-order`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));
+      if (p.needsScript) lines.push(...vevent(`${m.id}-script`, maxDate(p.callDoctor, t), `Ask for a new ${m.name} prescription for ${who}`, `Order date is ${nice(p.orderOn)}.`));
     }
     lines.push('END:VCALENDAR');
     return lines.map(fold).join('\r\n') + '\r\n';
@@ -786,7 +789,7 @@ details[open] > summary { margin-bottom: 12px; }
     const sched = meds.filter(isScheduled);
     if (!sched.length) return toast('No scheduled medicines to add yet.');
     downloadFile(sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics', buildIcs(sched), 'text/calendar');
-    toast('Calendar file made. Open it to add the reminder.');
+    toast('Calendar file made. Open it to add the reminder. Most calendars replace the earlier one; if you see two, delete the older.');
   }
 
   // ---------- backup ----------

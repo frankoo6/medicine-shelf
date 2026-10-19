@@ -291,13 +291,21 @@
       el('div', { class: 'actions' },
         countFix ? el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Count it now') : null,
         el('button', { class: countFix ? '' : 'primary', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'),
-        el('button', { class: 'link', type: 'button', onclick: () => {
-          if (!confirm(`Remove ${name}? This can't be undone.`)) return;
-          state.meds = state.meds.filter((x) => x !== m); save(); render(); done(`Removed ${name}.`);
-        } }, 'Remove')));
+        el('button', { class: 'link', type: 'button', onclick: () => removeMed(m) }, 'Remove')));
     if (openAction && openAction.id === m.id) body.append(actionForm(m, null, 'recount'));
     return el('article', { class: 'label', tabindex: '-1', 'data-key': `${m.id}:card` },
       el('div', { class: 'label-head' }, el('h3', {}, name), el('span', { class: 'pill now' }, 'Needs fixing')), body);
+  }
+  // Removes a medicine; Undo in the message puts it back where it was.
+  function removeMed(m, after) {
+    const name = typeof m.name === 'string' && m.name.trim() ? m.name : 'this medicine';
+    if (!confirm(`Remove ${name}? You can undo this right after.`)) return;
+    const at = state.meds.indexOf(m);
+    state.meds = state.meds.filter((x) => x !== m);
+    noteChange(); save(); if (after) after(); render();
+    done(`Removed ${name}.`, () => {
+      state.meds.splice(Math.min(at, state.meds.length), 0, m); save(); render(); done(`${name} is back.`);
+    });
   }
   function setStage(m, stage) {
     const before = m.refill ? { ...m.refill } : null;
@@ -382,9 +390,17 @@
   $('personDelete').addEventListener('click', () => {
     const p = state.people.find((x) => x.id === editingPerson); if (!p) return;
     const n = state.meds.filter((m) => m.personId === p.id).length;
-    if (!confirm(`Remove ${p.name}${n ? ` and their ${n} medicine${n === 1 ? '' : 's'}` : ''}? This can't be undone.`)) return;
+    if (!confirm(`Remove ${p.name}${n ? ` and their ${n} medicine${n === 1 ? '' : 's'}` : ''}? You can undo this right after.`)) return;
+    // Remember where everything was, so Undo puts the person and their medicines back in place.
+    const at = state.people.indexOf(p);
+    const theirMeds = state.meds.map((m, i) => [m, i]).filter(([m]) => m.personId === p.id);
     state.people = state.people.filter((x) => x.id !== p.id); state.meds = state.meds.filter((m) => m.personId !== p.id);
-    filter = 'all'; save(); $('personForm').hidden = true; render(); done(`Removed ${p.name}.`);
+    noteChange(); filter = 'all'; save(); $('personForm').hidden = true; render();
+    done(`Removed ${p.name}.`, () => {
+      state.people.splice(Math.min(at, state.people.length), 0, p);
+      for (const [m, i] of theirMeds) state.meds.splice(Math.min(i, state.meds.length), 0, m);
+      save(); render(); done(`${p.name} is back.`);
+    });
   });
   $('firstPerson').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -424,8 +440,7 @@
   $('addMedTop').addEventListener('click', () => openMedForm());
   $('medDelete').addEventListener('click', () => {
     const m = state.meds.find((x) => x.id === editingMed); if (!m) return;
-    if (!confirm(`Remove ${m.name}? This can't be undone.`)) return;
-    state.meds = state.meds.filter((x) => x.id !== m.id); save(); $('medForm').hidden = true; render(); done(`Removed ${m.name}.`);
+    removeMed(m, () => { $('medForm').hidden = true; });
   });
   $('medForm').addEventListener('submit', (e) => {
     e.preventDefault();

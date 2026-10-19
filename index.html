@@ -135,8 +135,8 @@ details[open] > summary { margin-bottom: 12px; }
 .steps li.done { color: var(--ink); }
 .steps li.done b::before { content: "\2713  "; color: var(--ok); }
 .steps li.next b { color: var(--accent); }
-.toast { display: flex; align-items: center; gap: 12px; }
-.toast-undo { background: transparent; color: var(--bg); border: 1px solid var(--bg); border-radius: 999px; padding: 4px 14px; min-height: 32px; font-size: .9rem; font-weight: 700; }
+.toast { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; border-radius: 18px !important; }
+.toast-undo { background: transparent; color: var(--bg); border: 1px solid var(--bg); border-radius: 999px; padding: 4px 16px; min-height: 44px; font-size: .95rem; font-weight: 700; }
 .file-btn { position: relative; display: inline-flex; align-items: center; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
@@ -484,15 +484,18 @@ details[open] > summary { margin-bottom: 12px; }
   let toastTimer;
   const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
   // Use after save(): shows the success message only if the save worked.
-  function done(msg, undo) {
+  function done(msg, undo, extra) {
     if (unreadable) toast('Not saved. Your saved list couldn’t be read: restore a backup or start a new list first (see the message at the top).');
-    else if (lastSaveOk) toast(msg, undo);
+    else if (lastSaveOk) toast(msg, undo, extra);
     else toast("Couldn't save. This browser isn't keeping data, so the change will be lost when you close it.");
   }
-  function toast(msg, undo) {
+  // A short message at the bottom. Optional Undo, and optional extra = { label, fn } for a follow-up action.
+  function toast(msg, undo, extra) {
     const t = $('toast'); t.replaceChildren(document.createTextNode(msg));
-    if (undo) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { clearTimeout(toastTimer); t.hidden = true; undo(); } }, 'Undo'));
-    t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), undo ? 9000 : 3200);
+    const close = () => { clearTimeout(toastTimer); t.hidden = true; };
+    if (extra) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { close(); extra.fn(); } }, extra.label));
+    if (undo) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { close(); undo(); } }, 'Undo'));
+    t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), extra ? 12000 : undo ? 9000 : 3200);
   }
   function scrollTo(node) { node.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
   function downloadFile(name, text, type) {
@@ -712,9 +715,12 @@ details[open] > summary { margin-bottom: 12px; }
         if (exp) m.expiresOn = exp.value || null;
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
       noteChange(); openAction = null; focusAfter = `${m.id}:${kind}`; save(); render();
-      done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
+      // The order date just moved: if this medicine is on the calendar, offer to update the reminder.
+      const offerCalendar = kind === 'refill' && m.calendarOn && (isScheduled(m) || SM.isDateStr(m.expiresOn))
+        ? { label: 'Update calendar', fn: () => addToCalendar([m]) } : null;
+      done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.${offerCalendar ? ' Your calendar reminder has the old date.' : ''}` : `Saved the count for ${m.name}.`, () => {
         Object.assign(m, before); save(); render(); done(`Undone. ${m.name} is back to how it was.`);
-      });
+      }, offerCalendar);
     });
     return el('div', { class: 'inline' },
       el('label', { for: qid }, kind === 'refill' ? 'How many you picked up' : `How many ${m.unit} you have`, qty),
@@ -877,6 +883,9 @@ details[open] > summary { margin-bottom: 12px; }
     const sched = meds.filter((m) => isScheduled(m) || SM.isDateStr(m.expiresOn));
     if (!sched.length) return toast('No order or expiry dates to add yet.');
     downloadFile(sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics', buildIcs(sched), 'text/calendar');
+    // Remember which medicines are on the calendar, so a refill can offer to update the reminder.
+    for (const m of sched) m.calendarOn = today();
+    save();
     toast('Calendar file made. Open it to add the reminder. Most calendars replace the earlier one; if you see two, delete the older.');
   }
 

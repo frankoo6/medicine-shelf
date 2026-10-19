@@ -39,8 +39,17 @@
 
   // What the card shows on day t.
   // action: 'order' | 'script' | 'soon' | 'ok', or the refill stage 'requested' | 'ready' while one is in progress.
+  const EXPIRY_SOON_DAYS = 30;
   function live(m, t) {
     const out = baseLive(m, t);
+    // Expiry (optional): an expired medicine is always urgent; one expiring within 30 days is 'soon'
+    // unless something more urgent is already showing.
+    if (isDateStr(m.expiresOn)) {
+      out.expiresIn = diff(t, m.expiresOn);
+      if (isScheduled(m) && out.p.runOut && out.expiresIn >= 0 && m.expiresOn < out.p.runOut) out.expiresBeforeRunOut = true;
+    }
+    const expired = out.expiresIn != null && out.expiresIn < 0;
+    const expiring = out.expiresIn != null && !expired && out.expiresIn <= EXPIRY_SOON_DAYS;
     const stage = m.refill && m.refill.stage;
     if (stage === 'requested' || stage === 'ready') {
       // A refill in progress is not a refill in hand: it stays urgent when the supply is about to run out.
@@ -50,6 +59,8 @@
       out.stageSince = stage === 'ready' ? m.refill.readyOn : m.refill.requestedOn;
       out.stageDays = out.stageSince ? diff(out.stageSince, t) : 0;
     }
+    if (expired) { out.status = 'now'; out.action = 'expired'; }
+    else if (expiring && out.status === 'ok') { out.status = 'soon'; out.action = 'expiring'; }
     return out;
   }
   function baseLive(m, t) {
@@ -93,7 +104,7 @@
         && (m.prn === true ? (m.perDay == null || isCount(m.perDay)) : isCount(m.perDay) && m.perDay > 0);
       if (!ok) { skipped++; continue; }
       const c = { ...m, prn: m.prn === true, perDay: m.perDay ?? 0 };
-      for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
+      for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn', 'expiresOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
       for (const k of ['refillsLeft', 'minCount', 'lastFillQty']) if (c[k] != null && !isCount(c[k])) c[k] = null;
       for (const k of ['leadDays', 'bufferDays', 'fillDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
       if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
@@ -120,7 +131,7 @@
       && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
   }
 
-  const api = { parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
+  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -179,5 +179,22 @@ test('list from before a restore or erase is offered back for 7 days only', () =
   assert.equal(SM.previousOffered(null, '2026-10-20'), false);
 });
 
+test('expiry: expired is urgent, within 30 days is soon, before run-out is flagged', () => {
+  const prn = { prn: true, perDay: 0, onHand: 2, minCount: 1, countedOn: '2026-10-01' };
+  assert.equal(SM.live(prn, '2026-10-19').action, 'ok');
+  assert.equal(SM.live({ ...prn, expiresOn: '2026-12-31' }, '2026-10-19').action, 'ok');        // 73 days away
+  const soon = SM.live({ ...prn, expiresOn: '2026-11-10' }, '2026-10-19');                        // 22 days away
+  assert.equal(soon.action, 'expiring'); assert.equal(soon.status, 'soon'); assert.equal(soon.expiresIn, 22);
+  const gone = SM.live({ ...prn, expiresOn: '2026-10-18' }, '2026-10-19');
+  assert.equal(gone.action, 'expired'); assert.equal(gone.status, 'now');
+  // a more urgent reason keeps its own label when the expiry is only "soon"
+  assert.equal(SM.live({ ...prn, onHand: 1, expiresOn: '2026-11-10' }, '2026-10-19').action, 'order');
+  // scheduled medicine that would expire before it is used up
+  const daily = { perDay: 1, onHand: 90, countedOn: '2026-10-01', expiresOn: '2026-11-15' };
+  assert.equal(SM.live(daily, '2026-10-19').expiresBeforeRunOut, true);
+  // a bad date from a backup is ignored
+  assert.equal(SM.live({ ...prn, expiresOn: 'soon' }, '2026-10-19').action, 'ok');
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

@@ -306,6 +306,7 @@ details[open] > summary { margin-bottom: 12px; }
           <label class="field" for="f_pharmacy"><span>Pharmacy</span><input id="f_pharmacy" autocomplete="off"></label>
           <label class="field" for="f_pharmacyPhone"><span>Pharmacy phone</span><input id="f_pharmacyPhone" type="tel" autocomplete="off"></label>
           <label class="field" for="f_rx"><span>Rx number</span><input id="f_rx" autocomplete="off"></label>
+          <label class="field" for="f_expires"><span>Expiry date on the package <small>(optional)</small></span><input id="f_expires" type="date"><small>Most useful for medicines you keep on hand, like inhalers or rescue medicines.</small></label>
         </div>
       </details>
       <details>
@@ -609,6 +610,9 @@ details[open] > summary { margin-bottom: 12px; }
       else text = `${why} Contact the prescriber's office by ${nice(p.callDoctor)}.`;
       warns.push(el('div', { class: 'warn-line' + (scriptNow || (p.callDoctor && p.callDoctor <= t) ? ' hard' : '') }, text));
     }
+    if (l.expiresIn != null && l.expiresIn < 0) warns.push(el('div', { class: 'warn-line hard' }, `Expired on ${nice(m.expiresOn)}. Ask your pharmacy about a replacement.`));
+    else if (l.expiresIn != null && l.expiresIn <= SM.EXPIRY_SOON_DAYS) warns.push(el('div', { class: 'warn-line' }, `Expires ${nice(m.expiresOn)}, in ${l.expiresIn} day${l.expiresIn === 1 ? '' : 's'}.`));
+    else if (l.expiresBeforeRunOut) warns.push(el('div', { class: 'warn-line' }, `Expires ${nice(m.expiresOn)}, before you'd finish this supply (about ${nice(p.runOut)}).`));
     if (isScheduled(m) && diff(m.verifiedOn ?? m.countedOn, t) > 120) warns.push(el('div', { class: 'warn-line' }, `Last counted ${nice(m.verifiedOn ?? m.countedOn)}. A quick recount keeps the dates right.`));
 
     const meta = el('div', { class: 'meta' },
@@ -617,7 +621,8 @@ details[open] > summary { margin-bottom: 12px; }
       m.refillsLeft != null ? el('span', {}, `${m.refillsLeft} refill${m.refillsLeft === 1 ? '' : 's'} left`) : null,
       m.pharmacy ? el('span', {}, m.pharmacy) : null,
       m.pharmacyPhone ? el('a', { href: 'tel:' + m.pharmacyPhone.replace(/[^\d+]/g, '') }, m.pharmacyPhone) : null,
-      m.rxNumber ? el('span', {}, `Rx ${m.rxNumber}`) : null);
+      m.rxNumber ? el('span', {}, `Rx ${m.rxNumber}`) : null,
+      m.expiresOn && !(l.expiresIn <= SM.EXPIRY_SOON_DAYS) ? el('span', {}, `Expires ${nice(m.expiresOn)}`) : null);
 
     // Refill progress: Requested -> Ready -> Picked up. Only "Picked up" changes the count.
     const progress = stage ? el('ol', { class: 'steps', 'aria-label': 'Refill progress' },
@@ -631,13 +636,13 @@ details[open] > summary { margin-bottom: 12px; }
       stage === 'requested' ? el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:ready`, onclick: () => setStage(m, 'ready') }, 'It’s ready for pickup') : null,
       el('button', { class: wantsOrder || stage === 'requested' ? '' : 'primary', type: 'button', 'data-key': `${m.id}:refill`, onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
       el('button', { type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
-      isScheduled(m) && !stage ? el('button', { type: 'button', 'data-key': `${m.id}:calendar`, onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
+      (isScheduled(m) || m.expiresOn) && !stage ? el('button', { type: 'button', 'data-key': `${m.id}:calendar`, onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
       stage ? el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:cancel`, onclick: () => setStage(m, null) }, 'Cancel request') : null,
       el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'));
 
     const body = el('div', { class: 'label-body' }, facts, progress, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
-    const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup' }[l.action];
+    const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup', expired: 'Expired', expiring: 'Expires soon' }[l.action];
     return el('article', { class: 'label', tabindex: '-1', 'data-key': `${m.id}:card`, 'aria-label': `${m.name}, ${label}` },
       el('div', { class: 'label-head' },
         el('h3', {}, m.name, m.strength ? ` ${m.strength}` : ''),
@@ -681,6 +686,9 @@ details[open] > summary { margin-bottom: 12px; }
     const t = today();
     const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : (l ? fmt1(l.est) : '') });
     const date = el('input', { id: did, type: 'date', value: t, max: t });
+    // A new package has a new expiry date; asked only for medicines whose expiry is being tracked.
+    const eid = `act_exp_${m.id}`;
+    const exp = kind === 'refill' && m.expiresOn ? el('input', { id: eid, type: 'date' }) : null;
     const preview = el('p', { class: 'note', style: 'flex-basis:100%', 'aria-live': 'polite' });
     const updatePreview = () => {
       const q = Number(qty.value), d = date.value;
@@ -696,11 +704,12 @@ details[open] > summary { margin-bottom: 12px; }
       if (kind === 'refill' && !(q > 0)) return toast('Enter how many you picked up. It has to be more than zero.');
       if (d > today()) return toast("The date can't be in the future.");
       if (SM.isDateStr(m.countedOn) && d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
-      const before = { onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, refill: m.refill ? { ...m.refill } : null };
+      const before = { expiresOn: m.expiresOn ?? null, onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, refill: m.refill ? { ...m.refill } : null };
       if (kind === 'refill') {
         const est = SM.estimateOn(m, d);
         Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, lastFillQty: q, confirmedRefill: null, refill: null });
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
+        if (exp) m.expiresOn = exp.value || null;
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
       noteChange(); openAction = null; focusAfter = `${m.id}:${kind}`; save(); render();
       done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
@@ -710,6 +719,7 @@ details[open] > summary { margin-bottom: 12px; }
     return el('div', { class: 'inline' },
       el('label', { for: qid }, kind === 'refill' ? 'How many you picked up' : `How many ${m.unit} you have`, qty),
       el('label', { for: did }, kind === 'refill' ? 'Picked up on' : 'Counted on', date),
+      exp ? el('label', { for: eid }, 'Expiry on the new package (blank if not shown)', exp) : null,
       go, el('button', { type: 'button', onclick: () => { openAction = null; focusAfter = `${m.id}:${kind}`; render(); } }, 'Cancel'), preview);
   }
 
@@ -768,7 +778,7 @@ details[open] > summary { margin-bottom: 12px; }
     F('lastFill').value = m?.lastFillDate || ''; F('confirmed').value = m?.confirmedRefill || '';
     F('fillDays').value = String(val(m || {}, 'fillDays')); F('refills').value = m?.refillsLeft ?? '';
     F('controlled').checked = !!m?.controlled; F('prescriber').value = m?.prescriber || ''; F('pharmacy').value = m?.pharmacy || '';
-    F('pharmacyPhone').value = m?.pharmacyPhone || ''; F('rx').value = m?.rxNumber || '';
+    F('pharmacyPhone').value = m?.pharmacyPhone || ''; F('rx').value = m?.rxNumber || ''; F('expires').value = m?.expiresOn || '';
     F('lead').value = val(m || {}, 'leadDays'); F('buffer').value = val(m || {}, 'bufferDays'); F('pct').value = val(m || {}, 'eligiblePct');
     $('medDelete').hidden = !m;
     $('personForm').hidden = true; $('medForm').hidden = false; scrollTo($('medForm')); F('name').focus({ preventScroll: true });
@@ -820,7 +830,7 @@ details[open] > summary { margin-bottom: 12px; }
       lastFillQty: prev && prev.lastFillDate === (F('lastFill').value || null) ? prev.lastFillQty ?? null : null,
       fillDays: Number(F('fillDays').value), refillsLeft: numOrNull(F('refills').value),
       controlled: F('controlled').checked, prescriber: F('prescriber').value.trim(), pharmacy: F('pharmacy').value.trim(),
-      pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(),
+      pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(), expiresOn: F('expires').value || null,
       leadDays: numOrNull(F('lead').value) ?? DEFAULTS.leadDays, bufferDays: numOrNull(F('buffer').value) ?? DEFAULTS.bufferDays,
       eligiblePct: numOrNull(F('pct').value) ?? DEFAULTS.eligiblePct,
     });
@@ -850,8 +860,12 @@ details[open] > summary { margin-bottom: 12px; }
     const t = today(), lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Medicine Shelf//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
     for (const m of meds) {
       let p; try { p = plan(m); } catch (e) { continue; } // skip a medicine with damaged data
-      if (!p.orderOn) continue;
       const who = personName(m.personId);
+      // Expiry reminder two weeks ahead (or today if that's already passed), with its own stable id.
+      if (SM.isDateStr(m.expiresOn) && m.expiresOn >= t) {
+        lines.push(...vevent(`${m.id}-expiry`, maxDate(addDays(m.expiresOn, -14), t), `Replace ${m.name} for ${who}: expires ${nice(m.expiresOn)}`, 'Ask your pharmacy about a replacement before it expires.'));
+      }
+      if (!p.orderOn) continue;
       const details = [`Runs out about ${nice(p.runOut)}.`, m.pharmacy && `Pharmacy: ${m.pharmacy}`, m.pharmacyPhone && `Phone: ${m.pharmacyPhone}`, m.rxNumber && `Rx: ${m.rxNumber}`].filter(Boolean).join('\n');
       lines.push(...vevent(`${m.id}-order`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));
       if (p.needsScript) lines.push(...vevent(`${m.id}-script`, maxDate(p.callDoctor, t), `Ask for a new ${m.name} prescription for ${who}`, `Order date is ${nice(p.orderOn)}.`));
@@ -860,8 +874,8 @@ details[open] > summary { margin-bottom: 12px; }
     return lines.map(fold).join('\r\n') + '\r\n';
   }
   function addToCalendar(meds) {
-    const sched = meds.filter(isScheduled);
-    if (!sched.length) return toast('No scheduled medicines to add yet.');
+    const sched = meds.filter((m) => isScheduled(m) || SM.isDateStr(m.expiresOn));
+    if (!sched.length) return toast('No order or expiry dates to add yet.');
     downloadFile(sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics', buildIcs(sched), 'text/calendar');
     toast('Calendar file made. Open it to add the reminder. Most calendars replace the earlier one; if you see two, delete the older.');
   }
@@ -922,7 +936,7 @@ details[open] > summary { margin-bottom: 12px; }
       { id: 'ex-m1', personId: 'ex-p1', name: 'Metformin', strength: '500 mg', unit: 'tablets', perDay: 2, prn: false, onHand: 160, countedOn: d(0), lastFillDate: d(-10), fillDays: 90, refillsLeft: 3, pharmacy: 'Main Street Pharmacy', rxNumber: '1000001', prescriber: 'Dr. Example', instructions: '1 tablet twice a day with food', ...ex },
       { id: 'ex-m2', personId: 'ex-p1', name: 'Lisinopril', strength: '10 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 12, countedOn: d(0), lastFillDate: d(-78), fillDays: 90, refillsLeft: 0, pharmacy: 'Main Street Pharmacy', rxNumber: '1000002', prescriber: 'Dr. Example', instructions: '1 tablet every morning', refill: { stage: 'requested', requestedOn: d(-2) }, ...ex },
       { id: 'ex-m3', personId: 'ex-p2', name: 'Methylphenidate ER', strength: '36 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 9, countedOn: d(0), lastFillDate: d(-21), fillDays: 30, controlled: true, eligiblePct: 80, pharmacy: 'Main Street Pharmacy', prescriber: 'Dr. Example', instructions: '1 tablet every morning', ...ex },
-      { id: 'ex-m4', personId: 'ex-p2', name: 'Albuterol inhaler', strength: '90 mcg', unit: 'inhalers', perDay: 0, prn: true, minCount: 1, onHand: 1, countedOn: d(-5), instructions: 'As needed for wheezing', ...ex });
+      { id: 'ex-m4', personId: 'ex-p2', name: 'Albuterol inhaler', strength: '90 mcg', unit: 'inhalers', perDay: 0, prn: true, minCount: 1, onHand: 1, countedOn: d(-5), expiresOn: d(21), instructions: 'As needed for wheezing', ...ex });
     filter = 'all'; view = 'home'; save(); render(); window.scrollTo(0, 0);
   }
   function clearExample() {

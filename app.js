@@ -182,7 +182,8 @@
       try { rows.push({ m, l: live(m) }); } catch (e) { broken.push({ m, why: 'count' }); }
     }
     const inView = rows.filter((r) => filter === 'all' || r.m.personId === filter);
-    const brokenInView = broken.filter((b) => filter === 'all' || b.m.personId === filter);
+    // A medicine linked to no one would never match a person's view, so it shows in every view until fixed.
+    const brokenInView = broken.filter((b) => filter === 'all' || b.m.personId === filter || b.why === 'no-person');
     $('cNow').textContent = inView.filter((r) => r.l.status === 'now').length + brokenInView.length;
     $('cSoon').textContent = inView.filter((r) => r.l.status === 'soon').length;
     $('cOk').textContent = inView.filter((r) => r.l.status === 'ok').length;

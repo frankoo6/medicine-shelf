@@ -223,5 +223,14 @@ test('picking up a refill is not a recount', () => {
   assert.equal(SM.applyPickup({ ...m, controlled: true }, 30, '2026-10-06').refillsLeft, undefined);
 });
 
+test('decimal amounts are not rounded to whole numbers or to one place', () => {
+  assert.equal(SM.suggestedPickup({ perDay: 1.25, fillDays: 30 }), 37.5);
+  assert.equal(SM.suggestedPickup({ perDay: 2, fillDays: 90 }), 180);
+  assert.equal(SM.suggestedPickup({ perDay: 0.33, fillDays: 30 }), 9.9);
+  assert.equal(SM.suggestedPickup({ prn: true, perDay: 0 }), '');
+  assert.equal(SM.round2(0.25), 0.25);          // shown as 0.25, not 0.3
+  assert.equal(SM.round2(100.5 - 2.3 * 3), 93.6); // no floating-point tails
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

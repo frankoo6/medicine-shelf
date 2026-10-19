@@ -90,6 +90,13 @@
     return isScheduled(m) ? Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, d))) : m.onHand;
   }
 
+  // What "Picked up a refill" suggests: one full fill at the daily amount, to 2 decimal places
+  // (1.25 mL a day for 30 days suggests 37.5, not 38). Blank for as-needed medicines.
+  const round2 = (n) => Math.round(n * 100) / 100;
+  function suggestedPickup(m) {
+    return isScheduled(m) ? round2(m.perDay * val(m, 'fillDays')) : '';
+  }
+
   // The changes "Picked up a refill" makes: the count becomes the estimate on that day plus what was picked up.
   // countedOn moves (it's the starting point for the countdown), but verifiedOn does NOT: nobody physically
   // counted what was already left, so the "time for a recount" reminder keeps its date.
@@ -148,7 +155,7 @@
       && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
   }
 
-  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, isDateStr, isCount, cleanBackupData };
+  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, suggestedPickup, round2, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

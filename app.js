@@ -87,12 +87,12 @@
     for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(String(k)));
     return n;
   };
-  const fmt = (n) => (Number.isInteger(n) ? String(n) : (Math.round(n * 10) / 10).toString());
+  // Numbers on screen keep up to 2 decimal places, so a daily amount like 0.25 never shows as 0.3.
+  const fmt = (n) => String(SM.round2(n));
   // Singular form for exactly 1 of a unit ("1 tablet/day"). Listed by hand: "patches" is not "patche".
   const SINGULAR = { tablets: 'tablet', capsules: 'capsule', patches: 'patch', inhalers: 'inhaler', doses: 'dose' };
   const unitFor = (n, unit) => (n === 1 && SINGULAR[unit] ? SINGULAR[unit] : unit);
   let toastTimer;
-  const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
   // Use after save(): shows the success message only if the save worked.
   function done(msg, undo, extra) {
     if (unreadable) toast('Not saved. Your saved list couldn’t be read: restore a backup or start a new list first (see the message at the top).');
@@ -202,9 +202,9 @@
     const facts = el('div', { class: 'facts' });
     const fact = (label, value, big) => el('div', { class: 'fact' + (big ? ' big' : '') }, el('span', { class: 'eyebrow' }, label), el('span', { class: 'v' }, value));
     if (isScheduled(m)) {
-      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Estimated left', `≈ ${fmt1(l.est)}`));
+      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Estimated left', `≈ ${fmt(l.est)}`));
     } else {
-      facts.append(fact('Last count', fmt1(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
+      facts.append(fact('Last count', fmt(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
     }
     const warns = [];
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
@@ -298,7 +298,7 @@
   function actionForm(m, l, kind) {
     const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
     const t = today();
-    const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : (l ? fmt1(l.est) : '') });
+    const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? SM.suggestedPickup(m) : (l ? fmt(l.est) : '') });
     const date = el('input', { id: did, type: 'date', value: t, max: t });
     // A new package has a new expiry date; asked only for medicines whose expiry is being tracked.
     const eid = `act_exp_${m.id}`;
@@ -308,7 +308,7 @@
       const q = Number(qty.value), d = date.value;
       if (kind !== 'refill' || qty.value === '' || !(q > 0) || !d) { preview.textContent = ''; return; }
       let est; try { est = SM.estimateOn(m, d); } catch (e) { preview.textContent = ''; return; }
-      preview.textContent = `${isScheduled(m) ? '≈ ' : ''}${fmt1(est)} left + ${fmt1(q)} picked up = ${fmt1(est + q)}`;
+      preview.textContent = `${isScheduled(m) ? '≈ ' : ''}${fmt(est)} left + ${fmt(q)} picked up = ${fmt(est + q)}`;
     };
     qty.addEventListener('input', updatePreview); date.addEventListener('input', updatePreview); updatePreview();
     const go = el('button', { class: 'primary', type: 'button' }, kind === 'refill' ? 'Add to count' : 'Save count');
@@ -327,7 +327,7 @@
       // The order date just moved: if this medicine is on the calendar, offer to update the reminder.
       const offerCalendar = kind === 'refill' && m.calendarOn && (isScheduled(m) || SM.isDateStr(m.expiresOn))
         ? { label: 'Update calendar', fn: () => addToCalendar([m]) } : null;
-      done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.${offerCalendar ? ' Your calendar reminder has the old date.' : ''}` : `Saved the count for ${m.name}.`, () => {
+      done(kind === 'refill' ? `Added ${fmt(q)} to ${m.name}.${offerCalendar ? ' Your calendar reminder has the old date.' : ''}` : `Saved the count for ${m.name}.`, () => {
         Object.assign(m, before); save(); render(); done(`Undone. ${m.name} is back to how it was.`);
       }, offerCalendar);
     });

@@ -100,5 +100,31 @@ test('month and year boundaries', () => {
   assert.equal(SM.addDays('2028-02-28', 1), '2028-02-29');
 });
 
+test('refill requested: shown as in progress, but stays urgent when about to run out', () => {
+  const m = { perDay: 1, onHand: 20, countedOn: '2026-10-01', refill: { stage: 'requested', requestedOn: '2026-10-10' } };
+  const early = SM.live(m, '2026-10-12');      // 9 days left
+  assert.equal(early.action, 'requested');
+  assert.equal(early.status, 'soon');
+  assert.equal(early.stageDays, 2);
+  const late = SM.live(m, '2026-10-18');       // 3 days left = pharmacy lead time
+  assert.equal(late.action, 'requested');
+  assert.equal(late.status, 'now');
+});
+
+test('refill ready for pickup counts days since ready; count is unchanged until pickup', () => {
+  const m = { perDay: 1, onHand: 20, countedOn: '2026-10-01', refill: { stage: 'ready', requestedOn: '2026-10-08', readyOn: '2026-10-09' } };
+  const l = SM.live(m, '2026-10-12');
+  assert.equal(l.action, 'ready');
+  assert.equal(l.stageSince, '2026-10-09');
+  assert.equal(l.stageDays, 3);
+  assert.equal(l.est, 9);
+});
+
+test('as-needed refill in progress is urgent only when none are left', () => {
+  const m = { prn: true, perDay: 0, onHand: 1, minCount: 2, countedOn: '2026-10-01', refill: { stage: 'requested', requestedOn: '2026-10-05' } };
+  assert.equal(SM.live(m, '2026-10-06').status, 'soon');
+  assert.equal(SM.live({ ...m, onHand: 0 }, '2026-10-06').status, 'now');
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

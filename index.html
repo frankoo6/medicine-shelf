@@ -125,6 +125,11 @@ details[open] > summary { margin-bottom: 12px; }
 .tools { display: grid; gap: 4px; }
 .tools .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: .95rem; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgb(0 0 0 / .2); z-index: 10; }
+.steps { list-style: none; margin: 0; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; background: var(--accent-soft); border-radius: 10px; font-size: .92rem; }
+.steps li { color: var(--muted); }
+.steps li.done { color: var(--ink); }
+.steps li.done b::before { content: "\2713  "; color: var(--ok); }
+.steps li.next b { color: var(--accent); }
 .toast { display: flex; align-items: center; gap: 12px; }
 .toast-undo { background: transparent; color: var(--bg); border: 1px solid var(--bg); border-radius: 999px; padding: 4px 14px; min-height: 32px; font-size: .9rem; font-weight: 700; }
 .file-btn { position: relative; display: inline-flex; align-items: center; }
@@ -297,6 +302,7 @@ details[open] > summary { margin-bottom: 12px; }
           <p>The count goes down by the daily amount from the day you last counted, so you only need to update it when you pick up a refill or recount.</p>
           <p><b>Order on</b> is the day you'd run out, minus the days your pharmacy needs and a few extra days to be safe. It is never earlier than the day insurance is likely to allow the refill. That day is an estimate based on when you last picked it up, unless you enter the date the pharmacy gave you.</p>
           <p>Medicines that need a new prescription each fill (or have no refills left) show <b>Contact prescriber</b> a week before the order date, so the office has time to send it.</p>
+          <p><b>I requested a refill</b> and <b>It’s ready for pickup</b> record where a refill stands, so you can see whether you already called it in. The count only goes up when you tap <b>Picked up a refill</b>, and the card stays urgent if the supply is about to run out.</p>
           <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count falls below the number you choose.</p>
         </div>
       </details>
@@ -460,7 +466,11 @@ details[open] > summary { margin-bottom: 12px; }
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
       ? `The pharmacy's next refill date is ${nice(p.eligible)}, but it runs out about ${nice(p.runOut)}. Call the pharmacy or prescriber now.`
       : `Insurance may not allow this refill until about ${nice(p.eligible)} (an estimate), but it runs out about ${nice(p.runOut)}. Call the pharmacy now, or recount in case the number is off.`));
-    if (p.needsScript) {
+    const stage = l.action === 'requested' || l.action === 'ready' ? l.action : null;
+    if (stage === 'requested' && l.stageDays >= 5) warns.push(el('div', { class: 'warn-line' + (l.status === 'now' ? ' hard' : '') }, `Requested ${l.stageDays} days ago and not marked ready. Check with the pharmacy${p.needsScript ? " or the prescriber's office" : ''}.`));
+    if (stage === 'ready' && l.stageDays >= 7) warns.push(el('div', { class: 'warn-line' }, `Ready since ${nice(l.stageSince)}. Pharmacies may put unclaimed refills back after a week or two.`));
+    if (stage && l.status === 'now') warns.push(el('div', { class: 'warn-line hard' }, isScheduled(m) ? `Only about ${l.daysLeft} day${l.daysLeft === 1 ? '' : 's'} left. Make sure this refill reaches you in time.` : 'None left. Make sure this refill reaches you soon.'));
+    if (p.needsScript && !stage) {
       const why = m.controlled ? 'Needs a new prescription each time.' : 'No refills left.';
       const scriptNow = l.action === 'script' || (l.action === 'order' && !isScheduled(m));
       let text;
@@ -479,15 +489,25 @@ details[open] > summary { margin-bottom: 12px; }
       m.pharmacyPhone ? el('a', { href: 'tel:' + m.pharmacyPhone.replace(/[^\d+]/g, '') }, m.pharmacyPhone) : null,
       m.rxNumber ? el('span', {}, `Rx ${m.rxNumber}`) : null);
 
+    // Refill progress: Requested -> Ready -> Picked up. Only "Picked up" changes the count.
+    const progress = stage ? el('ol', { class: 'steps', 'aria-label': 'Refill progress' },
+      el('li', { class: 'done' }, el('b', {}, 'Requested'), ` ${nice(m.refill.requestedOn)}`),
+      el('li', { class: stage === 'ready' ? 'done' : 'next' }, el('b', {}, 'Ready'), stage === 'ready' ? ` ${nice(m.refill.readyOn)}` : ''),
+      el('li', { class: stage === 'ready' ? 'next' : '' }, el('b', {}, 'Picked up'))) : null;
+
+    const wantsOrder = !stage && l.status !== 'ok';
     const actions = el('div', { class: 'actions' },
-      el('button', { class: 'primary', type: 'button', onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
+      !stage ? el('button', { class: wantsOrder ? 'primary' : '', type: 'button', onclick: () => setStage(m, 'requested') }, 'I requested a refill') : null,
+      stage === 'requested' ? el('button', { class: 'primary', type: 'button', onclick: () => setStage(m, 'ready') }, 'It’s ready for pickup') : null,
+      el('button', { class: wantsOrder || stage === 'requested' ? '' : 'primary', type: 'button', onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
       el('button', { type: 'button', onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
-      isScheduled(m) ? el('button', { type: 'button', onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
+      isScheduled(m) && !stage ? el('button', { type: 'button', onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
+      stage ? el('button', { class: 'link', type: 'button', onclick: () => setStage(m, null) }, 'Cancel request') : null,
       el('button', { class: 'link', type: 'button', onclick: () => openMedForm(m) }, 'Edit'));
 
-    const body = el('div', { class: 'label-body' }, facts, warns, meta, actions);
+    const body = el('div', { class: 'label-body' }, facts, progress, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
-    const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked' }[l.action];
+    const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup' }[l.action];
     return el('article', { class: 'label' },
       el('div', { class: 'label-head' },
         el('h3', {}, m.name, m.strength ? ` ${m.strength}` : ''),
@@ -495,6 +515,16 @@ details[open] > summary { margin-bottom: 12px; }
       body);
   }
 
+  function setStage(m, stage) {
+    const before = m.refill ? { ...m.refill } : null;
+    const t = today();
+    if (stage === 'requested') m.refill = { stage, requestedOn: t };
+    else if (stage === 'ready') m.refill = { ...(m.refill || { requestedOn: t }), stage, readyOn: t };
+    else m.refill = null;
+    noteChange(); openAction = null; save(); render();
+    const msg = stage === 'requested' ? `Marked ${m.name} as requested.` : stage === 'ready' ? `Marked ${m.name} as ready for pickup.` : `Cancelled the refill request for ${m.name}.`;
+    toast(msg, () => { m.refill = before; save(); render(); toast('Undone.'); });
+  }
   function toggleAction(id, kind) { openAction = openAction && openAction.id === id && openAction.kind === kind ? null : { id, kind }; render(); }
   function actionForm(m, l, kind) {
     const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
@@ -516,10 +546,10 @@ details[open] > summary { margin-bottom: 12px; }
       if (kind === 'refill' && !(q > 0)) return toast('Enter how many you picked up. It has to be more than zero.');
       if (d > today()) return toast("The date can't be in the future.");
       if (d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
-      const before = { onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null };
+      const before = { onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, refill: m.refill ? { ...m.refill } : null };
       const est = SM.estimateOn(m, d);
       if (kind === 'refill') {
-        Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, confirmedRefill: null });
+        Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, confirmedRefill: null, refill: null });
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
       noteChange(); openAction = null; save(); render();
@@ -699,7 +729,7 @@ details[open] > summary { margin-bottom: 12px; }
       { id: 'ex-p2', name: 'Jamie (example)', allergies: '', ...ex });
     state.meds.push(
       { id: 'ex-m1', personId: 'ex-p1', name: 'Metformin', strength: '500 mg', unit: 'tablets', perDay: 2, prn: false, onHand: 160, countedOn: d(0), lastFillDate: d(-10), fillDays: 90, refillsLeft: 3, pharmacy: 'Main Street Pharmacy', rxNumber: '1000001', prescriber: 'Dr. Example', instructions: '1 tablet twice a day with food', ...ex },
-      { id: 'ex-m2', personId: 'ex-p1', name: 'Lisinopril', strength: '10 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 12, countedOn: d(0), lastFillDate: d(-78), fillDays: 90, refillsLeft: 0, pharmacy: 'Main Street Pharmacy', rxNumber: '1000002', prescriber: 'Dr. Example', instructions: '1 tablet every morning', ...ex },
+      { id: 'ex-m2', personId: 'ex-p1', name: 'Lisinopril', strength: '10 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 12, countedOn: d(0), lastFillDate: d(-78), fillDays: 90, refillsLeft: 0, pharmacy: 'Main Street Pharmacy', rxNumber: '1000002', prescriber: 'Dr. Example', instructions: '1 tablet every morning', refill: { stage: 'requested', requestedOn: d(-2) }, ...ex },
       { id: 'ex-m3', personId: 'ex-p2', name: 'Methylphenidate ER', strength: '36 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 9, countedOn: d(0), lastFillDate: d(-21), fillDays: 30, controlled: true, eligiblePct: 80, pharmacy: 'Main Street Pharmacy', prescriber: 'Dr. Example', instructions: '1 tablet every morning', ...ex },
       { id: 'ex-m4', personId: 'ex-p2', name: 'Albuterol inhaler', strength: '90 mcg', unit: 'inhalers', perDay: 0, prn: true, minCount: 1, onHand: 1, countedOn: d(-5), instructions: 'As needed for wheezing', ...ex });
     filter = 'all'; view = 'home'; save(); render(); window.scrollTo(0, 0);

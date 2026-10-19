@@ -29,8 +29,22 @@
     return out;
   }
 
-  // What the card shows on day t. action: 'order' | 'script' | 'soon' | 'ok'.
+  // What the card shows on day t.
+  // action: 'order' | 'script' | 'soon' | 'ok', or the refill stage 'requested' | 'ready' while one is in progress.
   function live(m, t) {
+    const out = baseLive(m, t);
+    const stage = m.refill && m.refill.stage;
+    if (stage === 'requested' || stage === 'ready') {
+      // A refill in progress is not a refill in hand: it stays urgent when the supply is about to run out.
+      const urgent = isScheduled(m) ? out.daysLeft <= val(m, 'leadDays') : m.onHand <= 0;
+      out.status = urgent ? 'now' : 'soon';
+      out.action = stage;
+      out.stageSince = stage === 'ready' ? m.refill.readyOn : m.refill.requestedOn;
+      out.stageDays = out.stageSince ? diff(out.stageSince, t) : 0;
+    }
+    return out;
+  }
+  function baseLive(m, t) {
     const p = plan(m);
     if (!isScheduled(m)) {
       const low = m.minCount != null && m.onHand <= m.minCount;

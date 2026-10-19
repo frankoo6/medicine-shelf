@@ -225,6 +225,15 @@ details[open] > summary { margin-bottom: 12px; }
       <div class="tally ok"><span class="eyebrow">Stocked</span><b id="cOk">0</b></div>
     </section>
 
+    <div class="banner" id="backupConfirm" hidden>
+      <b>Did you keep the backup file?</b>
+      <p>It only helps if it's somewhere you can find it later, like your email, Files app or a cloud drive.</p>
+      <div class="actions">
+        <button class="primary" type="button" data-act="backupKept">Yes, I kept it</button>
+        <button type="button" data-act="backupRetry">No, try again</button>
+        <button class="link" type="button" data-act="backupSkip">Not now</button>
+      </div>
+    </div>
     <div class="banner" id="backupNudge" hidden>
       <b>Back up your list</b>
       <p>If this phone is lost or its browser data is cleared, your list goes with it. A backup file takes a few seconds.</p>
@@ -488,7 +497,9 @@ details[open] > summary { margin-bottom: 12px; }
     const last = state.meta.lastBackup;
     const realMeds = state.meds.filter((m) => !m.example).length;
     const changedSince = (state.meta.changesSinceBackup || 0) >= 5;
-    $('backupNudge').hidden = !(realMeds >= 1 && (!last || diff(last, today()) > 60 || changedSince));
+    const pending = state.meta.backupPending;
+    $('backupConfirm').hidden = !pending;
+    $('backupNudge').hidden = !!pending || !(realMeds >= 1 && (!last || diff(last, today()) > 60 || changedSince));
   }
 
   function card(m, l) {
@@ -764,7 +775,10 @@ details[open] > summary { margin-bottom: 12px; }
         await navigator.share({ files: [file], title: 'Medicine Shelf backup' });
       } else downloadFile(name, text, 'application/json');
     } catch (e) { if (e && e.name === 'AbortError') return; downloadFile(name, text, 'application/json'); }
-    state.meta.lastBackup = today(); state.meta.changesSinceBackup = 0; save(); render(); toast('Backup saved. The file lists your medicines in plain text, so keep it somewhere private.');
+    // Sharing or downloading doesn't prove the file was kept (a share can go to a chat that gets deleted,
+    // a download can be dismissed), so the reminder only clears after the person says they kept it.
+    state.meta.backupPending = { date: today(), changes: state.meta.changesSinceBackup || 0 };
+    save(); render(); toast('The file lists your medicines in plain text, so keep it somewhere private.');
   }
   const onRestore = (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -871,6 +885,15 @@ details[open] > summary { margin-bottom: 12px; }
     else if (act === 'print') window.print();
     else if (act === 'calendarAll') addToCalendar(state.meds.filter((m) => filter === 'all' || m.personId === filter));
     else if (act === 'backup') backup();
+    else if (act === 'backupKept' && state.meta.backupPending) {
+      const pend = state.meta.backupPending;
+      state.meta.lastBackup = pend.date;
+      // Changes made after the file was saved still count toward the next reminder.
+      state.meta.changesSinceBackup = Math.max(0, (state.meta.changesSinceBackup || 0) - pend.changes);
+      delete state.meta.backupPending; save(); render(); done('Thanks. Your backup is noted.');
+    }
+    else if (act === 'backupRetry') { delete state.meta.backupPending; save(); backup(); }
+    else if (act === 'backupSkip') { delete state.meta.backupPending; save(); render(); }
     else if (act === 'example') loadExample();
     else if (act === 'clearExample') clearExample();
     else if (act === 'bigtext') {

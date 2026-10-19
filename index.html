@@ -350,9 +350,11 @@ details[open] > summary { margin-bottom: 12px; }
     catch (e) { storageOK = false; return blank(); }
   }
   let state = load();
+  let lastSaveOk = true;
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
-    catch (e) { storageOK = false; $('storageWarn').hidden = false; return false; }
+    try { localStorage.setItem(KEY, JSON.stringify(state)); lastSaveOk = true; }
+    catch (e) { storageOK = false; lastSaveOk = false; $('storageWarn').hidden = false; }
+    return lastSaveOk;
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   // Counts real edits since the last backup, so the backup reminder can come back after several changes.
@@ -390,6 +392,11 @@ details[open] > summary { margin-bottom: 12px; }
   const unitFor = (n, unit) => (n === 1 && SINGULAR[unit] ? SINGULAR[unit] : unit);
   let toastTimer;
   const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
+  // Use after save(): shows the success message only if the save worked.
+  function done(msg, undo) {
+    if (lastSaveOk) toast(msg, undo);
+    else toast("Couldn't save. This browser isn't keeping data, so the change will be lost when you close it.");
+  }
   function toast(msg, undo) {
     const t = $('toast'); t.replaceChildren(document.createTextNode(msg));
     if (undo) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { clearTimeout(toastTimer); t.hidden = true; undo(); } }, 'Undo'));
@@ -525,7 +532,7 @@ details[open] > summary { margin-bottom: 12px; }
     else m.refill = null;
     noteChange(); openAction = null; save(); render();
     const msg = stage === 'requested' ? `Marked ${m.name} as requested.` : stage === 'ready' ? `Marked ${m.name} as ready for pickup.` : `Cancelled the refill request for ${m.name}.`;
-    toast(msg, () => { m.refill = before; save(); render(); toast('Undone.'); });
+    done(msg, () => { m.refill = before; save(); render(); done('Undone.'); });
   }
   function toggleAction(id, kind) { openAction = openAction && openAction.id === id && openAction.kind === kind ? null : { id, kind }; render(); }
   function actionForm(m, l, kind) {
@@ -555,8 +562,8 @@ details[open] > summary { margin-bottom: 12px; }
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
       noteChange(); openAction = null; save(); render();
-      toast(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
-        Object.assign(m, before); save(); render(); toast(`Undone. ${m.name} is back to how it was.`);
+      done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
+        Object.assign(m, before); save(); render(); done(`Undone. ${m.name} is back to how it was.`);
       });
     });
     return el('div', { class: 'inline' },
@@ -583,7 +590,7 @@ details[open] > summary { margin-bottom: 12px; }
     const name = $('p_name').value.trim(); if (!name) return;
     if (editingPerson) Object.assign(state.people.find((p) => p.id === editingPerson), { name, allergies: $('p_allergies').value.trim() });
     else { const p = { id: uid(), name, allergies: $('p_allergies').value.trim() }; state.people.push(p); filter = p.id; }
-    save(); $('personForm').hidden = true; render(); toast(`Saved ${name}.`);
+    save(); $('personForm').hidden = true; render(); done(`Saved ${name}.`);
   });
   $('personCancel').addEventListener('click', () => { $('personForm').hidden = true; });
   $('personDelete').addEventListener('click', () => {
@@ -591,7 +598,7 @@ details[open] > summary { margin-bottom: 12px; }
     const n = state.meds.filter((m) => m.personId === p.id).length;
     if (!confirm(`Remove ${p.name}${n ? ` and their ${n} medicine${n === 1 ? '' : 's'}` : ''}? This can't be undone.`)) return;
     state.people = state.people.filter((x) => x.id !== p.id); state.meds = state.meds.filter((m) => m.personId !== p.id);
-    filter = 'all'; save(); $('personForm').hidden = true; render(); toast(`Removed ${p.name}.`);
+    filter = 'all'; save(); $('personForm').hidden = true; render(); done(`Removed ${p.name}.`);
   });
   $('firstPerson').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -629,7 +636,7 @@ details[open] > summary { margin-bottom: 12px; }
   $('medDelete').addEventListener('click', () => {
     const m = state.meds.find((x) => x.id === editingMed); if (!m) return;
     if (!confirm(`Remove ${m.name}? This can't be undone.`)) return;
-    state.meds = state.meds.filter((x) => x.id !== m.id); save(); $('medForm').hidden = true; render(); toast(`Removed ${m.name}.`);
+    state.meds = state.meds.filter((x) => x.id !== m.id); save(); $('medForm').hidden = true; render(); done(`Removed ${m.name}.`);
   });
   $('medForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -658,7 +665,7 @@ details[open] > summary { margin-bottom: 12px; }
     });
     if (!prev) state.meds.push(m);
     noteChange(); save(); $('medForm').hidden = true; filter = state.people.length > 1 && filter === 'all' ? 'all' : m.personId; render();
-    toast(`Saved ${m.name}.`);
+    done(`Saved ${m.name}.`);
   });
 
   // ---------- calendar (.ics) ----------
@@ -715,7 +722,7 @@ details[open] > summary { margin-bottom: 12px; }
         if (j.app !== 'medicine-shelf' || !j.data || !Array.isArray(j.data.people) || !Array.isArray(j.data.meds)) throw new Error('not ours');
         const np = j.data.people.length, nm = j.data.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';
         if (!confirm(`This backup from ${when} has ${np} ${np === 1 ? 'person' : 'people'} and ${nm} ${nm === 1 ? 'medicine' : 'medicines'}: ${j.data.people.map((x) => x.name).join(', ') || 'none'}.\n\nReplace everything on this device with it?`)) return;
-        state = Object.assign(blank(), j.data); filter = 'all'; view = 'home'; save(); render(); toast('Backup restored.');
+        state = Object.assign(blank(), j.data); filter = 'all'; view = 'home'; save(); render(); done('Backup restored.');
       } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
     };
     r.readAsText(f);
@@ -794,7 +801,7 @@ details[open] > summary { margin-bottom: 12px; }
     }
     else if (act === 'erase') {
       if (!confirm('Erase every person and medicine on this device? Save a backup first if you might want them back.')) return;
-      state = blank(); filter = 'all'; save(); render(); toast('Everything on this device was erased.');
+      state = blank(); filter = 'all'; save(); render(); done('Everything on this device was erased.');
     }
   });
 

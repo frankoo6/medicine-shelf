@@ -161,5 +161,13 @@ test('partial fill: insurance estimate uses the amount actually picked up', () =
   assert.equal(SM.plan({ ...base, lastFillQty: 180 }).eligible, '2026-12-08'); // a full fill gives the same answer
 });
 
+test('saved list that cannot be read is reported, not silently replaced', () => {
+  assert.equal(SM.parseSaved('{"people":[],"meds":[]}').ok, true);
+  assert.equal(SM.parseSaved('{"version":1}').ok, true);                 // empty but valid
+  for (const bad of ['{"people":[', 'not json', 'null', '[]', '42', '{"people":"Sam"}', '{"meds":{}}']) {
+    assert.equal(SM.parseSaved(bad).ok, false, bad);
+  }
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

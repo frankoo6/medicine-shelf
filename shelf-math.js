@@ -103,7 +103,17 @@
     return { people, meds, skipped };
   }
 
-  const api = { DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
+  // Reads the list saved on this phone. Returns { ok: true, data } or { ok: false } when the text
+  // can't be read as a Medicine Shelf list (so the caller can keep it instead of overwriting it).
+  function parseSaved(raw) {
+    try {
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.people ?? []) && Array.isArray(d.meds ?? [])) return { ok: true, data: d };
+    } catch (e) { /* fall through */ }
+    return { ok: false };
+  }
+
+  const api = { parseSaved, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

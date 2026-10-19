@@ -182,6 +182,16 @@ details[open] > summary { margin-bottom: 12px; }
     <div class="actions"><button class="primary" type="button" onclick="location.reload()">Reload now</button></div>
   </div>
 
+  <div class="banner warn" id="unreadableWarn" hidden role="alert">
+    <b>Your saved list couldn’t be read</b>
+    <p>The saved data on this phone is damaged. Nothing has been deleted: a copy is kept, and nothing new will be saved until you choose what to do.</p>
+    <div class="actions">
+      <span class="btn file-btn">Restore a backup<input type="file" class="restore-input" accept=".json,application/json" aria-label="Restore a backup file"></span>
+      <button type="button" data-act="saveUnreadable">Save the damaged copy as a file</button>
+      <button class="danger" type="button" data-act="startOver">Start a new list</button>
+    </div>
+  </div>
+
   <div class="banner warn" id="storageWarn" hidden>
     <b>This browser isn't saving anything.</b>
     <p>Private browsing or blocked site data stops the app from keeping your list. Open it in a regular browser window, or add it to your home screen.</p>
@@ -388,13 +398,24 @@ details[open] > summary { margin-bottom: 12px; }
     while (v < DATA_VERSION) { v++; }
     return Object.assign(data, { version: DATA_VERSION });
   }
+  // If the saved list can't be read, it is copied to a separate key and saving is blocked until the
+  // person restores a backup or chooses to start over, so the next save can't overwrite it.
+  const UNREADABLE_KEY = KEY + '.unreadable';
+  let unreadable = null;
   function load() {
-    try { const raw = localStorage.getItem(KEY); if (!raw) return blank(); const d = JSON.parse(raw); return migrate(Object.assign(blank(), d), d.version); }
-    catch (e) { storageOK = false; return blank(); }
+    let raw;
+    try { raw = localStorage.getItem(KEY); } catch (e) { storageOK = false; return blank(); }
+    if (!raw) return blank();
+    const r = window.ShelfMath.parseSaved(raw);
+    if (r.ok) return migrate(Object.assign(blank(), r.data), r.data.version);
+    unreadable = raw;
+    try { if (!localStorage.getItem(UNREADABLE_KEY)) localStorage.setItem(UNREADABLE_KEY, JSON.stringify({ keptAt: new Date().toISOString(), text: raw })); } catch (e) { /* the original is still under KEY */ }
+    return blank();
   }
   let state = load();
   let lastSaveOk = true;
   function save() {
+    if (unreadable) { lastSaveOk = false; return false; } // never overwrite a list we couldn't read
     try { localStorage.setItem(KEY, JSON.stringify(state)); lastSaveOk = true; }
     catch (e) { storageOK = false; lastSaveOk = false; $('storageWarn').hidden = false; }
     return lastSaveOk;
@@ -437,7 +458,8 @@ details[open] > summary { margin-bottom: 12px; }
   const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
   // Use after save(): shows the success message only if the save worked.
   function done(msg, undo) {
-    if (lastSaveOk) toast(msg, undo);
+    if (unreadable) toast('Not saved. Your saved list couldn’t be read: restore a backup or start a new list first (see the message at the top).');
+    else if (lastSaveOk) toast(msg, undo);
     else toast("Couldn't save. This browser isn't keeping data, so the change will be lost when you close it.");
   }
   function toast(msg, undo) {
@@ -472,6 +494,7 @@ details[open] > summary { margin-bottom: 12px; }
   }
   function renderNow() {
     $('storageWarn').hidden = storageOK;
+    $('unreadableWarn').hidden = !unreadable;
     $('exampleBanner').hidden = !state.people.some((p) => p.example);
     const has = state.people.length > 0;
     $('welcome').hidden = has || view !== 'home';
@@ -688,6 +711,7 @@ details[open] > summary { margin-bottom: 12px; }
   $('firstPerson').addEventListener('submit', (e) => {
     e.preventDefault();
     const name = $('firstName').value.trim(); if (!name) return;
+    if (unreadable) return done('');
     const p = { id: uid(), name, allergies: '' };
     state.people.push(p); filter = p.id; save(); render(); openMedForm();
   });
@@ -843,6 +867,7 @@ details[open] > summary { margin-bottom: 12px; }
         // The file you just restored from IS the latest backup of this list, so its date becomes the "last backup" date.
         const fileDate = String(j.exportedAt || '').slice(0, 10);
         const meta = Object.assign({}, j.data.meta, { lastBackup: SM.isDateStr(fileDate) ? fileDate : null, changesSinceBackup: 0 });
+        unreadable = null; // a restored backup replaces the damaged list; the damaged copy stays under its own key
         state = Object.assign(blank(), j.data, { people: clean.people, meds: clean.meds, meta });
         filter = 'all'; view = 'home'; save(); render(); done('Backup restored.');
       } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
@@ -853,6 +878,7 @@ details[open] > summary { margin-bottom: 12px; }
 
   // ---------- example household (for demos and first-time visitors) ----------
   function loadExample() {
+    if (unreadable) return done('');
     const d = (n) => addDays(today(), n);
     const ex = { example: true };
     state.people.push(
@@ -929,6 +955,15 @@ details[open] > summary { margin-bottom: 12px; }
     else if (act === 'print') window.print();
     else if (act === 'calendarAll') addToCalendar(state.meds.filter((m) => filter === 'all' || m.personId === filter));
     else if (act === 'backup') backup();
+    else if (act === 'saveUnreadable') {
+      let text = unreadable;
+      try { const k = JSON.parse(localStorage.getItem(UNREADABLE_KEY) || 'null'); if (k && k.text) text = k.text; } catch (err) {}
+      downloadFile(`medicine-shelf-damaged-${today()}.txt`, text || '', 'text/plain');
+    }
+    else if (act === 'startOver') {
+      if (!confirm('Start a new, empty list? The damaged copy stays saved on this phone in case it can be recovered later.')) return;
+      unreadable = null; state = blank(); filter = 'all'; save(); render(); done('Started a new list.');
+    }
     else if (act === 'backupKept' && state.meta.backupPending) {
       const pend = state.meta.backupPending;
       state.meta.lastBackup = pend.date;

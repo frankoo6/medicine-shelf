@@ -124,6 +124,7 @@
 
   // ---------- view state ----------
   let view = 'home', filter = 'all', editingMed = null, editingPerson = null, openAction = null;
+  let swReg = null, reloadRequested = false; // offline support: see the end of this file
 
   // Every change redraws the list, which would drop keyboard focus. Buttons carry a data-key so the
   // same button (or the form that just opened) gets focus back after the redraw.
@@ -641,7 +642,12 @@
     else if (act === 'back') { view = 'home'; render(); }
     else if (act === 'print') window.print();
     else if (act === 'calendarAll') addToCalendar(state.meds.filter((m) => filter === 'all' || m.personId === filter));
-    else if (act === 'reload') location.reload();
+    else if (act === 'reload') {
+      const waiting = swReg && swReg.waiting;
+      if (!waiting) return location.reload();
+      reloadRequested = true; waiting.postMessage('skipWaiting');
+      setTimeout(() => location.reload(), 4000); // in case the switch-over message is never answered
+    }
     else if (act === 'backup') backup();
     else if (act === 'bringBack') {
       if (!confirm('Replace the current list with the earlier one?')) return;
@@ -702,14 +708,21 @@
 
   // ---------- offline ----------
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    // When a new version takes over while the app is open, say so and offer a reload
-    // (not automatic, so nothing half-typed is lost). Not shown on the very first install.
-    const hadController = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('updateBanner').hidden = false; });
+    // A new version installs in the background as a complete set of files and then waits (sw.js).
+    // The banner offers "Reload now"; tapping it tells the waiting version to take over, then reloads
+    // onto it. Nothing switches on its own, so nothing half-typed is lost. Not shown on the first install.
+    const showUpdate = () => { if (navigator.serviceWorker.controller) $('updateBanner').hidden = false; };
     navigator.serviceWorker.register('sw.js').then((reg) => {
+      swReg = reg;
+      if (reg.waiting) showUpdate();
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') showUpdate(); });
+      });
       // Check for a new version whenever the app comes back to the front.
       document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
     }).catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloadRequested) location.reload(); });
   }
 
   // Refresh "days left" when the app comes back to the front on a new day.

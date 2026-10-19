@@ -1,15 +1,26 @@
 // Medicine Shelf offline support.
-// When you change any file, bump CACHE (v1 -> v2) so phones pick up the new version.
-const CACHE = 'medicine-shelf-v8';
+// Each version of the app is stored as one complete set of files under its own name (CACHE). A phone keeps
+// using its current set until the person taps "Reload now" on the "new version is ready" banner, then
+// switches to the whole new set at once, so an old page never runs with newer files.
+// When you change any file, raise the version number at the end of CACHE by one (v9 -> v10).
+const CACHE = 'medicine-shelf-v9';
 const FILES = ['./', './index.html', './shelf-math.js', './app.js', './flyer.html', './flyer.js', './qrcode.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   // cache: 'reload' skips the browser's own HTTP cache (GitHub Pages lets it keep files ~10 minutes),
-  // so a new version installs the new files, not stale copies of the old ones.
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // so the new set holds the new files, not stale copies of the old ones. If any file fails, the whole
+  // install fails and the phone keeps the version it has.
+  // No skipWaiting() here: a new version waits until the page asks for it (see the 'message' handler).
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
+});
+
+// The page sends 'skipWaiting' when the person taps "Reload now".
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  // Remove older sets, then take over open pages (only matters on the very first install).
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k.startsWith('medicine-shelf-') && k !== CACHE).map((k) => caches.delete(k))))
@@ -17,23 +28,17 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Serve from the cache first so the app opens with no signal, then refresh the cache in the background.
+// Serve this version's own files. Nothing is refreshed in the background: a file only changes when a whole
+// new version is installed.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  // The background refresh (fetch + cache.put) is handed to waitUntil so the browser keeps the worker alive until it finishes.
-  // cache: 'no-cache' asks GitHub whether the file changed (a cheap check) instead of trusting the browser's HTTP cache.
-  const fresh = fetch(req, { cache: 'no-cache' }).then(async (res) => {
-    if (res.ok && res.type === 'basic') { const cache = await caches.open(CACHE); await cache.put(req, res.clone()); }
-    return res;
-  });
-  event.waitUntil(fresh.then(() => undefined, () => undefined));
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req, { ignoreSearch: true });
     if (cached) return cached;
-    // Not cached yet: use the network; if offline, fall back to the app page for page loads.
-    try { return (await fresh).clone(); }
+    // Not part of the app (or the set isn't stored yet): use the network; offline page loads get the app page.
+    try { return await fetch(req); }
     catch (e) { return req.mode === 'navigate' ? (await cache.match('./index.html')) || Response.error() : Response.error(); }
   })());
 });

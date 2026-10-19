@@ -30,7 +30,7 @@ Open `flyer.html` from your hosted link (for example `https://yourname.github.io
 
 ## Updating the app later
 
-Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and raise the version number at the end of the `CACHE` name by one (for example `medicine-shelf-v6` becomes `medicine-shelf-v7`). Run the tests first. When a phone with the app open finds the new version, it shows "A new version of Medicine Shelf is ready" with a Reload button; otherwise it picks it up the next time the app is opened.
+Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and raise the version number at the end of the `CACHE` name by one (for example `medicine-shelf-v6` becomes `medicine-shelf-v7`). Run the tests first. A phone downloads the new version in the background as one complete set of files and keeps using the old set until the person taps **Reload now** on the "A new version of Medicine Shelf is ready" banner (or fully closes the app and opens it again). It never mixes old and new files. If you forget to raise the number, phones keep the old version.
 
 Families' data is not affected by updates. It lives in their browser under the key `medicine-shelf.v1`. If you ever change the data format, raise `DATA_VERSION` in `app.js` and add a step to `migrate()`, so older lists and backups still load.
 

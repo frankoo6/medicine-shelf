@@ -112,34 +112,72 @@
     return out;
   }
 
-  // ---- Checking data that comes from a backup file ----
+  // ---- Checking saved lists and backup files: the same rules for both ----
 
-  // Keeps the people and medicines a backup can safely load, fixes optional fields that are
-  // broken, and reports how many rows it had to skip. Never throws on bad rows.
-  function cleanBackupData(data) {
-    const people = [], meds = [];
-    let skipped = 0;
-    for (const p of Array.isArray(data.people) ? data.people : []) {
-      if (p && typeof p.id === 'string' && p.id && typeof p.name === 'string' && p.name.trim()) {
-        people.push({ ...p, name: p.name.trim().slice(0, 40), allergies: typeof p.allergies === 'string' ? p.allergies : '' });
-      } else skipped++;
+  // Fixes the optional fields of one medicine that are broken (a bad date, a negative number, a refill
+  // marked ready with no date). Never changes the name, person, count or schedule. Returns a copy.
+  function normalizeMed(m) {
+    const c = { ...m, prn: m.prn === true };
+    if (c.prn && c.perDay == null) c.perDay = 0;
+    for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn', 'expiresOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
+    for (const k of ['minCount', 'lastFillQty', 'lastFillDaysSupply']) if (c[k] != null && !isCount(c[k])) c[k] = null;
+    if (c.refillsLeft != null) c.refillsLeft = isCount(c.refillsLeft) ? Math.floor(c.refillsLeft) : null; // refills are whole numbers
+    for (const k of ['leadDays', 'bufferDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
+    if (c.fillDays != null && !(isCount(c.fillDays) && c.fillDays > 0)) delete c.fillDays; // 0 days would mean "refill at once"
+    if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
+    if (c.refill) {
+      const r = c.refill;
+      if (!(r && ['requested', 'ready'].includes(r.stage) && isDateStr(r.requestedOn))) c.refill = null;
+      else if (r.stage === 'ready' && !isDateStr(r.readyOn)) c.refill = { stage: 'requested', requestedOn: r.requestedOn }; // "ready" with no date: back to requested
     }
-    const ids = new Set(people.map((p) => p.id));
-    for (const m of Array.isArray(data.meds) ? data.meds : []) {
-      const ok = m && typeof m.id === 'string' && m.id && typeof m.name === 'string' && m.name.trim()
-        && ids.has(m.personId) && isDateStr(m.countedOn) && isCount(m.onHand)
-        && (m.prn === true ? (m.perDay == null || isCount(m.perDay)) : isCount(m.perDay) && m.perDay > 0);
-      if (!ok) { skipped++; continue; }
-      const c = { ...m, prn: m.prn === true, perDay: m.perDay ?? 0 };
-      for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn', 'expiresOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
-      for (const k of ['refillsLeft', 'minCount', 'lastFillQty', 'lastFillDaysSupply']) if (c[k] != null && !isCount(c[k])) c[k] = null;
-      for (const k of ['leadDays', 'bufferDays', 'fillDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
-      if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
-      if (c.refill && !(['requested', 'ready'].includes(c.refill.stage) && isDateStr(c.refill.requestedOn))) c.refill = null;
-      meds.push(c);
-    }
-    return { people, meds, skipped };
+    return c;
   }
+
+  // Why a medicine can't be shown as a normal card, or null if it can.
+  // fatal: its count or schedule can't be worked out. A backup leaves it out; a list already on the phone
+  //   keeps it and shows a "Needs fixing" card, so nothing is lost.
+  // not fatal: an as-needed medicine with no reorder number. Kept, and shown as "Needs fixing" so one can be set.
+  function medProblem(m, personIds) {
+    if (!m || typeof m !== 'object') return { fatal: true, why: 'unreadable' };
+    if (typeof m.name !== 'string' || !m.name.trim()) return { fatal: true, why: 'unnamed' };
+    if (personIds && !personIds.has(m.personId)) return { fatal: true, why: 'no-person' };
+    if (!isDateStr(m.countedOn) || !isCount(m.onHand)) return { fatal: true, why: 'count' };
+    if (m.prn === true) {
+      if (m.perDay != null && !isCount(m.perDay)) return { fatal: true, why: 'schedule' };
+      if (!isCount(m.minCount)) return { fatal: false, why: 'no-reorder-number' };
+    } else if (!(isCount(m.perDay) && m.perDay > 0)) return { fatal: true, why: 'schedule' };
+    return null;
+  }
+
+  // Checks a whole list. Every person and medicine ends up with its own id (edit and refill buttons find
+  // medicines by id, so two sharing one could change the wrong entry): a later duplicate person is left out
+  // (their medicines stay with the first), and a medicine with a missing or repeated id gets a new one.
+  // keepBroken: true for the list on this phone (damaged medicines are kept, to be fixed on screen);
+  //             false for a backup file (they are left out and counted in `skipped`).
+  const defaultId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function cleanList(data, newId = defaultId, { keepBroken = false } = {}) {
+    const people = [], meds = [], personIds = new Set(), medIds = new Set();
+    let skipped = 0, repaired = 0;
+    for (const p of Array.isArray(data.people) ? data.people : []) {
+      const hasId = p && typeof p.id === 'string' && p.id && !personIds.has(p.id);
+      const named = hasId && typeof p.name === 'string' && p.name.trim();
+      if (!hasId || (!named && !keepBroken)) { skipped++; continue; }
+      personIds.add(p.id);
+      people.push({ ...p, name: named ? p.name.trim().slice(0, 40) : 'Unnamed person', allergies: typeof p.allergies === 'string' ? p.allergies : '' });
+    }
+    for (const raw of Array.isArray(data.meds) ? data.meds : []) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { skipped++; continue; }
+      const m = normalizeMed(raw);
+      const problem = medProblem(m, personIds);
+      if (problem && problem.fatal && !keepBroken) { skipped++; continue; }
+      if (typeof m.id !== 'string' || !m.id || medIds.has(m.id)) { m.id = newId(); repaired++; }
+      medIds.add(m.id);
+      meds.push(m);
+    }
+    return { people, meds, skipped, repaired };
+  }
+  // A backup file: damaged entries are left out.
+  const cleanBackupData = (data, newId) => cleanList(data, newId, { keepBroken: false });
 
   // Reads the list saved on this phone. Returns { ok: true, data } or { ok: false } when the text
   // can't be read as a Medicine Shelf list (so the caller can keep it instead of overwriting it).
@@ -158,7 +196,7 @@
       && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
   }
 
-  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, suggestedPickup, round2, isDateStr, isCount, cleanBackupData };
+  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, suggestedPickup, round2, isDateStr, isCount, normalizeMed, medProblem, cleanList, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

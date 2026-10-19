@@ -9,6 +9,7 @@
   let storageOK = true;
   try { localStorage.setItem(KEY + '.probe', '1'); localStorage.removeItem(KEY + '.probe'); } catch (e) { storageOK = false; }
   // The data format version. If the format ever changes, raise this and add a step to migrate() below.
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const DATA_VERSION = 1;
   const blank = () => ({ version: DATA_VERSION, people: [], meds: [], meta: {} });
   // Brings data saved by an older version of the app up to the current format, one version at a time.
@@ -27,7 +28,13 @@
     try { raw = localStorage.getItem(KEY); } catch (e) { storageOK = false; return blank(); }
     if (!raw) return blank();
     const r = window.ShelfMath.parseSaved(raw);
-    if (r.ok) return migrate(Object.assign(blank(), r.data), r.data.version);
+    if (r.ok) {
+      // The same checks a backup gets (shelf-math.js cleanList), except that nothing on the phone is
+      // dropped: a damaged medicine stays in the list and shows as a "Needs fixing" card.
+      const data = migrate(Object.assign(blank(), r.data), r.data.version);
+      const clean = window.ShelfMath.cleanList(data, uid, { keepBroken: true });
+      return Object.assign(data, { people: clean.people, meds: clean.meds });
+    }
     unreadable = raw;
     try { if (!localStorage.getItem(UNREADABLE_KEY)) localStorage.setItem(UNREADABLE_KEY, JSON.stringify({ keptAt: new Date().toISOString(), text: raw })); } catch (e) { /* the original is still under KEY */ }
     return blank();
@@ -70,7 +77,6 @@
     const d = parse(s);
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
   };
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const personName = (id) => (state.people.find((p) => p.id === id) || {}).name || 'Someone';
   const plan = SM.plan;
   const live = (m) => SM.live(m, today());
@@ -168,26 +174,30 @@
     // A medicine whose saved data is damaged (e.g. no count date) can't be worked out. It gets its own
     // "needs fixing" card instead of breaking every card on the page.
     const rows = [], broken = [];
+    const personIds = new Set(state.people.map((p) => p.id));
     for (const m of state.meds) {
-      try { rows.push({ m, l: live(m) }); } catch (e) { broken.push(m); }
+      const problem = SM.medProblem(m, personIds);
+      if (problem) { broken.push({ m, why: problem.why }); continue; }
+      try { rows.push({ m, l: live(m) }); } catch (e) { broken.push({ m, why: 'count' }); }
     }
     const inView = rows.filter((r) => filter === 'all' || r.m.personId === filter);
-    $('cNow').textContent = inView.filter((r) => r.l.status === 'now').length;
+    const brokenInView = broken.filter((b) => filter === 'all' || b.m.personId === filter);
+    $('cNow').textContent = inView.filter((r) => r.l.status === 'now').length + brokenInView.length;
     $('cSoon').textContent = inView.filter((r) => r.l.status === 'soon').length;
     $('cOk').textContent = inView.filter((r) => r.l.status === 'ok').length;
     const rank = { now: 0, soon: 1, ok: 2 };
     inView.sort((a, b) => rank[a.l.status] - rank[b.l.status] || (a.l.p.orderOn || '9999').localeCompare(b.l.p.orderOn || '9999') || a.m.name.localeCompare(b.m.name));
     const list = $('list'); list.replaceChildren();
-    if (!inView.length) {
+    if (!inView.length && !brokenInView.length) {
       const who = filter === 'all' ? 'anyone' : personName(filter);
       list.append(el('div', { class: 'empty' },
         el('h3', {}, `No medicines for ${who} yet`),
         el('p', { class: 'note' }, 'Grab the bottle. Enter the name, how many are taken a day and how many are in it right now. The app works out the rest.'),
         el('button', { class: 'primary', type: 'button', onclick: () => openMedForm() }, 'Add a medicine')));
     }
-    for (const m of broken) if (filter === 'all' || m.personId === filter) list.append(brokenCard(m));
+    for (const { m, why } of brokenInView) list.append(brokenCard(m, why));
     for (const { m, l } of inView) {
-      try { list.append(card(m, l)); } catch (e) { list.append(brokenCard(m)); }
+      try { list.append(card(m, l)); } catch (e) { list.append(brokenCard(m, 'count')); }
     }
     const last = state.meta.lastBackup;
     const realMeds = state.meds.filter((m) => !m.example).length;
@@ -264,13 +274,22 @@
       body);
   }
 
-  // Shown in place of a normal card when a medicine's saved data is damaged.
-  function brokenCard(m) {
-    const name = typeof m.name === 'string' && m.name ? m.name : 'A medicine';
+  // Shown in place of a normal card when a medicine's saved data can't be worked out (see SM.medProblem).
+  function brokenCard(m, why) {
+    const name = typeof m.name === 'string' && m.name.trim() ? m.name : 'A medicine';
+    const text = {
+      'count': `The saved count for ${name} is damaged, so its dates can't be worked out. Count what you have now to fix it, or remove it.`,
+      'schedule': `How many a day isn't readable for ${name}. Use Edit to fix it, or remove it.`,
+      'no-reorder-number': `${name} is taken as needed but has no reorder number, so the app can't tell you when to reorder. Use Edit to set one.`,
+      'no-person': `${name} isn't linked to anyone on this list. Use Edit to choose who takes it.`,
+      'unnamed': 'This medicine has no name. Use Edit to name it, or remove it.',
+    }[why] || `The saved details for ${name} are damaged. Use Edit to fix them, or remove it.`;
+    const countFix = why === 'count';
     const body = el('div', { class: 'label-body' },
-      el('div', { class: 'warn-line hard' }, `The saved count for ${name} is damaged, so its dates can't be worked out. Count what you have now to fix it, or remove it.`),
+      el('div', { class: 'warn-line hard' }, text),
       el('div', { class: 'actions' },
-        el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Count it now'),
+        countFix ? el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Count it now') : null,
+        el('button', { class: countFix ? '' : 'primary', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'),
         el('button', { class: 'link', type: 'button', onclick: () => {
           if (!confirm(`Remove ${name}? This can't be undone.`)) return;
           state.meds = state.meds.filter((x) => x !== m); save(); render(); done(`Removed ${name}.`);
@@ -382,7 +401,8 @@
     F('countedOn').max = today(); F('lastFill').max = today();
     $('medFormTitle').textContent = m ? `Edit ${m.name}` : 'Add a medicine';
     F('person').replaceChildren(...state.people.map((p) => new Option(p.name, p.id)));
-    F('person').value = m ? m.personId : filter !== 'all' ? filter : state.people[0].id;
+    const known = (id) => state.people.some((p) => p.id === id);
+    F('person').value = m && known(m.personId) ? m.personId : filter !== 'all' && known(filter) ? filter : state.people[0].id;
     F('name').value = m?.name || ''; F('strength').value = m?.strength || ''; F('unit').value = m?.unit || 'tablets';
     F('perDay').value = m?.perDay ?? ''; F('prn').checked = !!m?.prn; F('min').value = m?.minCount ?? ''; $('minWrap').hidden = !F('prn').checked; F('min').required = F('prn').checked;
     // Editing never touches the count: only Recount and Picked up a refill change it.
@@ -431,7 +451,7 @@
     if (!prev) {
       if (F('countedOn').value > today()) { toast("The date counted can't be in the future."); return; }
       count = { onHand: Number(F('onHand').value), countedOn: F('countedOn').value, verifiedOn: F('countedOn').value };
-    } else if ((perDay || 0) !== prev.perDay || prn !== !!prev.prn) {
+    } else if (!SM.medProblem(prev) && ((perDay || 0) !== prev.perDay || prn !== !!prev.prn)) {
       // The schedule changed: carry the count forward to today at the OLD rate, so past use isn't re-figured at the new one.
       // Not a physical count, so verifiedOn (used for the "recount" reminder) stays as it was.
       count = { onHand: SM.estimateOn(prev, today()), countedOn: today(), verifiedOn: prev.verifiedOn ?? prev.countedOn };
@@ -525,7 +545,7 @@
         if (fileVersion > DATA_VERSION) { toast('This backup was made by a newer version of Medicine Shelf. Open the app while online so it updates, then restore again.'); return; }
         j.data = migrate(j.data, fileVersion);
         // Check every person and medicine; a damaged row is skipped instead of breaking the whole app.
-        const clean = SM.cleanBackupData(j.data);
+        const clean = SM.cleanBackupData(j.data, uid);
         const np = clean.people.length, nm = clean.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';
         if (!np) { toast("That backup has no one in it that can be loaded."); return; }
         const skippedNote = clean.skipped ? `\n\n${clean.skipped} damaged ${clean.skipped === 1 ? 'entry' : 'entries'} in the file will be left out.` : '';

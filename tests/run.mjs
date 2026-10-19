@@ -243,5 +243,50 @@ test('the last fill keeps its days\' supply after the schedule changes', () => {
   assert.equal(SM.plan({ ...m, lastFillDate: '2026-10-01', lastFillQty: 60 }).eligible, '2026-10-24');
 });
 
+test('checks: duplicate ids, ready with no date, fractional refills, zero fill days', () => {
+  let n = 0; const newId = () => `new${++n}`;
+  const data = {
+    people: [{ id: 'p1', name: 'Sam' }, { id: 'p1', name: 'Sam again' }],
+    meds: [
+      { id: 'a', personId: 'p1', name: 'One', perDay: 1, onHand: 30, countedOn: '2026-10-01', refillsLeft: 2.7, fillDays: 0,
+        refill: { stage: 'ready', requestedOn: '2026-10-02' } },
+      { id: 'a', personId: 'p1', name: 'Two', perDay: 1, onHand: 30, countedOn: '2026-10-01' },
+      { personId: 'p1', name: 'No id', perDay: 1, onHand: 30, countedOn: '2026-10-01' },
+    ],
+  };
+  const c = SM.cleanBackupData(data, newId);
+  assert.deepEqual(c.people.map((p) => p.name), ['Sam']);        // the repeated person is left out
+  assert.equal(c.skipped, 1);
+  assert.deepEqual(c.meds.map((m) => m.id), ['a', 'new1', 'new2']); // repeated and missing ids get new ones
+  assert.equal(c.repaired, 2);
+  assert.equal(c.meds[0].refillsLeft, 2);                         // refills are whole numbers
+  assert.equal(c.meds[0].fillDays, undefined);                    // 0 days dropped, default used
+  assert.equal(SM.plan(c.meds[0]).runOut, '2026-10-31');
+  assert.deepEqual(c.meds[0].refill, { stage: 'requested', requestedOn: '2026-10-02' }); // "ready" with no date
+});
+
+test('checks: as-needed with no reorder number is kept but flagged', () => {
+  const data = { people: [{ id: 'p1', name: 'Sam' }], meds: [{ id: 'x', personId: 'p1', name: 'Spray', prn: true, onHand: 2, countedOn: '2026-10-01' }] };
+  const c = SM.cleanBackupData(data);
+  assert.equal(c.meds.length, 1);
+  assert.deepEqual(SM.medProblem(c.meds[0], new Set(['p1'])), { fatal: false, why: 'no-reorder-number' });
+  assert.equal(SM.medProblem({ ...c.meds[0], minCount: 1 }, new Set(['p1'])), null);
+});
+
+test('checks: the list on the phone keeps damaged medicines so they can be fixed', () => {
+  const data = { people: [{ id: 'p1', name: 'Sam' }], meds: [
+    { id: 'a', personId: 'p1', name: 'Text count', perDay: 1, onHand: '10', countedOn: '2026-10-01' },
+    { id: 'b', personId: 'p1', name: 'No date', perDay: 1, onHand: 10 },
+    { id: 'c', personId: 'p1', name: 'Text schedule', perDay: 'two', onHand: 10, countedOn: '2026-10-01' },
+    { id: 'd', personId: 'gone', name: 'Orphan', perDay: 1, onHand: 10, countedOn: '2026-10-01' },
+  ] };
+  const kept = SM.cleanList(data, undefined, { keepBroken: true });
+  assert.equal(kept.meds.length, 4);
+  assert.equal(kept.skipped, 0);
+  const ids = new Set(['p1']);
+  assert.deepEqual(kept.meds.map((m) => SM.medProblem(m, ids).why), ['count', 'count', 'schedule', 'no-person']);
+  assert.equal(SM.cleanBackupData(data).meds.length, 0);       // a backup with these leaves them out
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

@@ -66,7 +66,39 @@
     return isScheduled(m) ? Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, d))) : m.onHand;
   }
 
-  const api = { DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn };
+  // ---- Checking data that comes from a backup file ----
+  // A real calendar date written as YYYY-MM-DD (rejects 2026-02-30, '', undefined).
+  const isDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && toStr(parse(s)) === s;
+  const isCount = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+
+  // Keeps the people and medicines a backup can safely load, fixes optional fields that are
+  // broken, and reports how many rows it had to skip. Never throws on bad rows.
+  function cleanBackupData(data) {
+    const people = [], meds = [];
+    let skipped = 0;
+    for (const p of Array.isArray(data.people) ? data.people : []) {
+      if (p && typeof p.id === 'string' && p.id && typeof p.name === 'string' && p.name.trim()) {
+        people.push({ ...p, name: p.name.trim().slice(0, 40), allergies: typeof p.allergies === 'string' ? p.allergies : '' });
+      } else skipped++;
+    }
+    const ids = new Set(people.map((p) => p.id));
+    for (const m of Array.isArray(data.meds) ? data.meds : []) {
+      const ok = m && typeof m.id === 'string' && m.id && typeof m.name === 'string' && m.name.trim()
+        && ids.has(m.personId) && isDateStr(m.countedOn) && isCount(m.onHand)
+        && (m.prn === true ? (m.perDay == null || isCount(m.perDay)) : isCount(m.perDay) && m.perDay > 0);
+      if (!ok) { skipped++; continue; }
+      const c = { ...m, prn: m.prn === true, perDay: m.perDay ?? 0 };
+      for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
+      for (const k of ['refillsLeft', 'minCount', 'lastFillQty']) if (c[k] != null && !isCount(c[k])) c[k] = null;
+      for (const k of ['leadDays', 'bufferDays', 'fillDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
+      if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
+      if (c.refill && !(['requested', 'ready'].includes(c.refill.stage) && isDateStr(c.refill.requestedOn))) c.refill = null;
+      meds.push(c);
+    }
+    return { people, meds, skipped };
+  }
+
+  const api = { DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

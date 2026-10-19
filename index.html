@@ -720,9 +720,14 @@ details[open] > summary { margin-bottom: 12px; }
       try {
         const j = JSON.parse(r.result);
         if (j.app !== 'medicine-shelf' || !j.data || !Array.isArray(j.data.people) || !Array.isArray(j.data.meds)) throw new Error('not ours');
-        const np = j.data.people.length, nm = j.data.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';
-        if (!confirm(`This backup from ${when} has ${np} ${np === 1 ? 'person' : 'people'} and ${nm} ${nm === 1 ? 'medicine' : 'medicines'}: ${j.data.people.map((x) => x.name).join(', ') || 'none'}.\n\nReplace everything on this device with it?`)) return;
-        state = Object.assign(blank(), j.data); filter = 'all'; view = 'home'; save(); render(); done('Backup restored.');
+        // Check every person and medicine; a damaged row is skipped instead of breaking the whole app.
+        const clean = SM.cleanBackupData(j.data);
+        const np = clean.people.length, nm = clean.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';
+        if (!np) { toast("That backup has no one in it that can be loaded."); return; }
+        const skippedNote = clean.skipped ? `\n\n${clean.skipped} damaged ${clean.skipped === 1 ? 'entry' : 'entries'} in the file will be left out.` : '';
+        if (!confirm(`This backup from ${when} has ${np} ${np === 1 ? 'person' : 'people'} and ${nm} ${nm === 1 ? 'medicine' : 'medicines'}: ${clean.people.map((x) => x.name).join(', ')}.${skippedNote}\n\nReplace everything on this device with it?`)) return;
+        state = Object.assign(blank(), j.data, { people: clean.people, meds: clean.meds, meta: Object.assign({}, j.data.meta) });
+        filter = 'all'; view = 'home'; save(); render(); done('Backup restored.');
       } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
     };
     r.readAsText(f);

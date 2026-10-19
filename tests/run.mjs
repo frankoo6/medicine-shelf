@@ -126,5 +126,33 @@ test('as-needed refill in progress is urgent only when none are left', () => {
   assert.equal(SM.live({ ...m, onHand: 0 }, '2026-10-06').status, 'now');
 });
 
+test('restore: damaged rows are skipped, broken optional fields are cleared', () => {
+  const data = {
+    people: [{ id: 'p1', name: 'Sam' }, { id: '', name: 'No id' }],
+    meds: [
+      { id: 'a', personId: 'p1', name: 'Good', perDay: 2, onHand: 30, countedOn: '2026-10-01', lastFillDate: 'yesterday', refillsLeft: -1, eligiblePct: 20 },
+      { id: 'b', personId: 'p1', name: 'No count date', perDay: 1, onHand: 10 },
+      { id: 'c', personId: 'p1', name: 'Bad date', perDay: 1, onHand: 10, countedOn: '2026-02-30' },
+      { id: 'd', personId: 'p1', name: 'Text count', perDay: 1, onHand: '10', countedOn: '2026-10-01' },
+      { id: 'e', personId: 'nobody', name: 'Orphan', perDay: 1, onHand: 10, countedOn: '2026-10-01' },
+      { id: 'f', personId: 'p1', name: 'As needed', prn: true, onHand: 3, minCount: 1, countedOn: '2026-10-01' },
+    ],
+  };
+  const c = SM.cleanBackupData(data);
+  assert.deepEqual(c.people.map((p) => p.id), ['p1']);
+  assert.deepEqual(c.meds.map((m) => m.id), ['a', 'f']);
+  assert.equal(c.skipped, 5);
+  assert.equal(c.meds[0].lastFillDate, null);
+  assert.equal(c.meds[0].refillsLeft, null);
+  assert.equal(c.meds[0].eligiblePct, undefined);
+  assert.equal(SM.plan(c.meds[0]).runOut, '2026-10-16'); // still computes cleanly
+});
+
+test('date check rejects impossible and badly written dates', () => {
+  assert.equal(SM.isDateStr('2026-10-19'), true);
+  assert.equal(SM.isDateStr('2028-02-29'), true);
+  for (const bad of ['2026-02-30', '2026-13-01', '10/19/2026', '', null, undefined, 20261019]) assert.equal(SM.isDateStr(bad), false, String(bad));
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

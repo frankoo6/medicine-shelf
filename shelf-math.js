@@ -26,9 +26,11 @@
     out.orderBy = addDays(out.runOut, -(val(m, 'leadDays') + val(m, 'bufferDays')));
     if (m.confirmedRefill) { out.eligible = m.confirmedRefill; out.eligibleConfirmed = true; }
     else if (m.lastFillDate) {
-      // Insurance counts the days' supply of the last fill. If we know how many were picked up, use that
-      // (a partial fill is fewer days); otherwise assume a full fill of fillDays.
-      const supplyDays = isCount(m.lastFillQty) && m.lastFillQty > 0 ? m.lastFillQty / m.perDay : val(m, 'fillDays');
+      // Insurance counts the days' supply of the last fill. It is saved at pickup (amount picked up divided by
+      // the daily amount at that time), so changing the schedule later doesn't rewrite it. Older lists without
+      // it fall back to the amount picked up, then to a full fill of fillDays.
+      const supplyDays = isCount(m.lastFillDaysSupply) && m.lastFillDaysSupply > 0 ? m.lastFillDaysSupply
+        : isCount(m.lastFillQty) && m.lastFillQty > 0 ? m.lastFillQty / m.perDay : val(m, 'fillDays');
       out.eligible = addDays(m.lastFillDate, Math.ceil(supplyDays * val(m, 'eligiblePct') / 100));
     }
     if (out.eligible) out.tight = out.eligible > addDays(out.runOut, -val(m, 'leadDays'));
@@ -103,7 +105,8 @@
   function applyPickup(m, qty, d) {
     const out = {
       onHand: estimateOn(m, d) + qty, countedOn: d, verifiedOn: m.verifiedOn ?? m.countedOn,
-      lastFillDate: d, lastFillQty: qty, confirmedRefill: null, refill: null,
+      lastFillDate: d, lastFillQty: qty, lastFillDaysSupply: isScheduled(m) ? qty / m.perDay : null,
+      confirmedRefill: null, refill: null,
     };
     if (typeof m.refillsLeft === 'number' && !m.controlled) out.refillsLeft = Math.max(0, m.refillsLeft - 1);
     return out;
@@ -129,7 +132,7 @@
       if (!ok) { skipped++; continue; }
       const c = { ...m, prn: m.prn === true, perDay: m.perDay ?? 0 };
       for (const k of ['lastFillDate', 'confirmedRefill', 'verifiedOn', 'expiresOn']) if (c[k] != null && !isDateStr(c[k])) c[k] = null;
-      for (const k of ['refillsLeft', 'minCount', 'lastFillQty']) if (c[k] != null && !isCount(c[k])) c[k] = null;
+      for (const k of ['refillsLeft', 'minCount', 'lastFillQty', 'lastFillDaysSupply']) if (c[k] != null && !isCount(c[k])) c[k] = null;
       for (const k of ['leadDays', 'bufferDays', 'fillDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
       if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
       if (c.refill && !(['requested', 'ready'].includes(c.refill.stage) && isDateStr(c.refill.requestedOn))) c.refill = null;

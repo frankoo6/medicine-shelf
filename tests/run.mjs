@@ -232,5 +232,16 @@ test('decimal amounts are not rounded to whole numbers or to one place', () => {
   assert.equal(SM.round2(100.5 - 2.3 * 3), 93.6); // no floating-point tails
 });
 
+test('the last fill keeps its days\' supply after the schedule changes', () => {
+  const m = { perDay: 2, onHand: 0, countedOn: '2026-10-01', fillDays: 90 };
+  const picked = { ...m, ...SM.applyPickup(m, 60, '2026-10-01') };   // 60 tablets at 2 a day = 30 days
+  assert.equal(picked.lastFillDaysSupply, 30);
+  assert.equal(SM.plan(picked).eligible, '2026-10-24');               // 30 x 75% = 23 days
+  const halved = { ...picked, perDay: 1 };                             // later: 1 a day
+  assert.equal(SM.plan(halved).eligible, '2026-10-24');               // still 30 days, not 60
+  // an older list with only the amount still works
+  assert.equal(SM.plan({ ...m, lastFillDate: '2026-10-01', lastFillQty: 60 }).eligible, '2026-10-24');
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

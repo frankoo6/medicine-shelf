@@ -318,7 +318,7 @@
       if (kind === 'refill' && !(q > 0)) return toast('Enter how many you picked up. It has to be more than zero.');
       if (d > today()) return toast("The date can't be in the future.");
       if (SM.isDateStr(m.countedOn) && d < m.countedOn) return toast(`That's before your last count on ${nice(m.countedOn)}. ${kind === 'refill' ? 'If this refill was already in that count, there is nothing to add.' : 'Use a date on or after it.'}`);
-      const before = { expiresOn: m.expiresOn ?? null, onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, refill: m.refill ? { ...m.refill } : null };
+      const before = { expiresOn: m.expiresOn ?? null, onHand: m.onHand, countedOn: m.countedOn, verifiedOn: m.verifiedOn ?? null, lastFillDate: m.lastFillDate ?? null, refillsLeft: m.refillsLeft ?? null, confirmedRefill: m.confirmedRefill ?? null, lastFillQty: m.lastFillQty ?? null, lastFillDaysSupply: m.lastFillDaysSupply ?? null, refill: m.refill ? { ...m.refill } : null };
       if (kind === 'refill') {
         Object.assign(m, SM.applyPickup(m, q, d));
         if (exp) m.expiresOn = exp.value || null;
@@ -441,8 +441,9 @@
       perDay: perDay || 0, prn, minCount: prn ? numOrNull(F('min').value) : null,
       instructions: F('instructions').value.trim(),
       lastFillDate: F('lastFill').value || null, confirmedRefill: F('confirmed').value || null,
-      // The amount from the last recorded pickup only applies to that pickup's date.
+      // The amount and days' supply from the last recorded pickup only apply to that pickup's date.
       lastFillQty: prev && prev.lastFillDate === (F('lastFill').value || null) ? prev.lastFillQty ?? null : null,
+      lastFillDaysSupply: prev && prev.lastFillDate === (F('lastFill').value || null) ? prev.lastFillDaysSupply ?? null : null,
       fillDays: Number(F('fillDays').value), refillsLeft: numOrNull(F('refills').value),
       controlled: F('controlled').checked, prescriber: F('prescriber').value.trim(), pharmacy: F('pharmacy').value.trim(),
       pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(), expiresOn: F('expires').value || null,

@@ -621,6 +621,7 @@ details[open] > summary { margin-bottom: 12px; }
   const numOrNull = (v) => (v === '' || v == null ? null : Number(v));
   function openMedForm(m) {
     editingMed = m ? m.id : null;
+    F('countedOn').max = today(); F('lastFill').max = today();
     $('medFormTitle').textContent = m ? `Edit ${m.name}` : 'Add a medicine';
     F('person').replaceChildren(...state.people.map((p) => new Option(p.name, p.id)));
     F('person').value = m ? m.personId : filter !== 'all' ? filter : state.people[0].id;
@@ -651,6 +652,20 @@ details[open] > summary { margin-bottom: 12px; }
     e.preventDefault();
     const prn = F('prn').checked, perDay = numOrNull(F('perDay').value);
     if (!prn && !(perDay > 0)) { toast('Enter how many a day, or tick "Taken only as needed".'); F('perDay').focus(); return; }
+    // The browser's min="0" doesn't stop a typed minus sign, so check numbers and dates here too.
+    const bad = (field, msg) => { toast(msg); F(field).focus(); return true; };
+    const neg = (field) => { const v = numOrNull(F(field).value); return v != null && !(v >= 0); };
+    if (neg('perDay')) return void bad('perDay', "How many a day can't be negative.");
+    if (!editingMed && neg('onHand')) return void bad('onHand', "How many you have can't be negative.");
+    if (prn && neg('min')) return void bad('min', "The reorder number can't be negative.");
+    const refills = numOrNull(F('refills').value);
+    if (refills != null && !(Number.isInteger(refills) && refills >= 0)) return void bad('refills', 'Refills left should be a whole number, 0 or more.');
+    if (neg('lead')) return void bad('lead', "Days the pharmacy needs can't be negative.");
+    if (neg('buffer')) return void bad('buffer', "Extra days can't be negative.");
+    const pct = numOrNull(F('pct').value);
+    if (pct != null && !(pct >= 50 && pct <= 100)) return void bad('pct', 'The insurance percent should be between 50 and 100.');
+    if (F('lastFill').value && F('lastFill').value > today()) return void bad('lastFill', "The last pickup date can't be in the future.");
+    if (F('lastFill').value && F('confirmed').value && F('confirmed').value < F('lastFill').value) return void bad('confirmed', 'The next refill date should be after the last pickup.');
     const prev = state.meds.find((x) => x.id === editingMed);
     let count;
     if (!prev) {

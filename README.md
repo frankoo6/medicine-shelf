@@ -29,7 +29,7 @@ Open `flyer.html` from your hosted link (for example `https://yourname.github.io
 
 ## Updating the app later
 
-Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and bump the number in `medicine-shelf-v4` (to v5, then v6, and so on). Run the tests first. Phones pick up the new version the second time they open the app.
+Phones keep a copy of the app so it works offline. After you change any file, open `sw.js` and bump the number in `medicine-shelf-v5` (to v6, then v7, and so on). Run the tests first. Phones pick up the new version the second time they open the app.
 
 Families' data is not affected by updates. It lives in their browser under the key `medicine-shelf.v1`. If you ever change the data format, keep reading the old one.
 

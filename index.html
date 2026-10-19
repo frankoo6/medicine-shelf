@@ -344,9 +344,18 @@ details[open] > summary { margin-bottom: 12px; }
   // ---------- storage ----------
   let storageOK = true;
   try { localStorage.setItem(KEY + '.probe', '1'); localStorage.removeItem(KEY + '.probe'); } catch (e) { storageOK = false; }
-  const blank = () => ({ version: 1, people: [], meds: [], meta: {} });
+  // The data format version. If the format ever changes, raise this and add a step to migrate() below.
+  const DATA_VERSION = 1;
+  const blank = () => ({ version: DATA_VERSION, people: [], meds: [], meta: {} });
+  // Brings data saved by an older version of the app up to the current format, one version at a time.
+  // There are no format changes yet; a future one adds: if (v === 1) { ...change data...; v = 2; }
+  function migrate(data, fromVersion) {
+    let v = Number.isInteger(fromVersion) && fromVersion >= 1 ? fromVersion : 1;
+    while (v < DATA_VERSION) { v++; }
+    return Object.assign(data, { version: DATA_VERSION });
+  }
   function load() {
-    try { const raw = localStorage.getItem(KEY); return raw ? Object.assign(blank(), JSON.parse(raw)) : blank(); }
+    try { const raw = localStorage.getItem(KEY); if (!raw) return blank(); const d = JSON.parse(raw); return migrate(Object.assign(blank(), d), d.version); }
     catch (e) { storageOK = false; return blank(); }
   }
   let state = load();
@@ -704,7 +713,7 @@ details[open] > summary { margin-bottom: 12px; }
   // ---------- backup ----------
   async function backup() {
     const name = `medicine-shelf-backup-${today()}.json`;
-    const text = JSON.stringify({ app: 'medicine-shelf', version: 1, exportedAt: new Date().toISOString(), data: state }, null, 2);
+    const text = JSON.stringify({ app: 'medicine-shelf', version: DATA_VERSION, exportedAt: new Date().toISOString(), data: state }, null, 2);
     const file = typeof File === 'function' ? new File([text], name, { type: 'application/json' }) : null;
     try {
       if (file && navigator.canShare && navigator.canShare({ files: [file] }) && /android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
@@ -720,6 +729,9 @@ details[open] > summary { margin-bottom: 12px; }
       try {
         const j = JSON.parse(r.result);
         if (j.app !== 'medicine-shelf' || !j.data || !Array.isArray(j.data.people) || !Array.isArray(j.data.meds)) throw new Error('not ours');
+        const fileVersion = Number(j.version ?? j.data.version ?? 1);
+        if (fileVersion > DATA_VERSION) { toast('This backup was made by a newer version of Medicine Shelf. Open the app while online so it updates, then restore again.'); return; }
+        j.data = migrate(j.data, fileVersion);
         // Check every person and medicine; a damaged row is skipped instead of breaking the whole app.
         const clean = SM.cleanBackupData(j.data);
         const np = clean.people.length, nm = clean.meds.length, when = j.exportedAt ? nice(String(j.exportedAt).slice(0, 10)) : 'an unknown date';

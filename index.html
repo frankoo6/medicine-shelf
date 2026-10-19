@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Medicine Shelf</title>
+<meta name="description" content="Track how much medicine your household has and when to reorder. Free, private, works offline. No sign-up.">
+<meta name="theme-color" content="#28457a" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151a19" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Med Shelf">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+/* Layout: one column of pharmacy-label cards, most urgent first; people chips and a three-count summary on top; tools at the bottom. No external requests of any kind. */
+:root {
+  --bg: #f3f5f4;
+  --paper: #ffffff;
+  --ink: #1b2220;
+  --muted: #55605d;
+  --line: #d3dad7;
+  --accent: #28457a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4eaf4;
+  --ok: #2d6e45;   --ok-soft: #e1efe5;
+  --soon: #8a5200; --soon-soft: #fbeed6;
+  --now: #b3261e;  --now-soft: #f8e1df;
+  --f-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-num: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --r: 12px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #151a19; --paper: #1d2322; --ink: #e7ecea; --muted: #a0aba7; --line: #313937;
+  --accent: #9db7e8; --accent-ink: #12203a; --accent-soft: #223149;
+  --ok: #7fcb97; --ok-soft: #1c3325; --soon: #f0b458; --soon-soft: #3a2c12; --now: #f08a82; --now-soft: #43201d;
+  color-scheme: dark; } }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+html.big { font-size: 118.75%; }
+.banner.example { background: var(--soon-soft); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 1.0625rem/1.5 var(--f-body);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.wrap { max-width: 820px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 96px; display: grid; gap: 18px; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
+h1 { font-size: 1.6rem; font-weight: 750; letter-spacing: -.01em; }
+h2 { font-size: 1.25rem; font-weight: 700; }
+h3 { font-size: 1.2rem; font-weight: 650; }
+p { margin: 0; }
+.muted, .note { color: var(--muted); }
+.note { font-size: .92rem; }
+.eyebrow { font-size: .74rem; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.rx { display: inline-grid; place-items: center; width: 2.2rem; height: 2.2rem; border: 2px solid var(--accent); color: var(--accent); border-radius: 7px; font-family: var(--f-num); font-weight: 700; font-size: .95rem; flex: none; }
+header.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+
+button, .btn { font: inherit; font-size: 1rem; cursor: pointer; border-radius: 10px; padding: 10px 16px; min-height: 44px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 650; }
+button.danger { color: var(--now); border-color: var(--now); background: transparent; }
+button.link { border: none; background: none; padding: 8px 2px; min-height: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, .btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+.banner { background: var(--accent-soft); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 8px; }
+.banner.warn { background: var(--now-soft); color: var(--ink); }
+.banner .actions { margin-top: 2px; }
+
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tally { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; gap: 2px; }
+.tally b { font-family: var(--f-num); font-size: 1.9rem; line-height: 1.1; }
+.tally.now b { color: var(--now); } .tally.soon b { color: var(--soon); } .tally.ok b { color: var(--ok); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { border-radius: 999px; padding: 8px 16px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.add { border-style: dashed; color: var(--accent); }
+
+.list { display: grid; gap: 14px; }
+.label { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.label-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 12px 16px 10px; border-bottom: 2px solid var(--accent); }
+.label-head h3 { min-width: 0; overflow-wrap: anywhere; }
+.who { font-weight: 650; color: var(--accent); letter-spacing: .05em; text-transform: uppercase; font-size: .8rem; }
+.label-body { padding: 14px 16px 16px; display: grid; gap: 14px; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.fact { display: grid; gap: 2px; min-width: 0; }
+.fact .v { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
+.fact.big .v { font-size: 1.7rem; line-height: 1.15; }
+.pill { font-weight: 750; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; white-space: nowrap; }
+.pill.now { background: var(--now-soft); color: var(--now); }
+.pill.soon { background: var(--soon-soft); color: var(--soon); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.warn-line { border-left: 4px solid var(--soon); background: var(--soon-soft); padding: 9px 12px; border-radius: 6px; font-size: .95rem; }
+.warn-line.hard { border-color: var(--now); background: var(--now-soft); }
+.meta { color: var(--muted); font-size: .9rem; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; background: var(--accent-soft); padding: 12px; border-radius: 10px; }
+.inline label { display: grid; gap: 4px; font-size: .9rem; flex: 1 1 140px; }
+
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 16px; display: grid; gap: 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field > span { font-size: .92rem; font-weight: 600; }
+.field small { color: var(--muted); font-size: .82rem; }
+input, select { font: inherit; font-size: 1rem; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; min-width: 0; }
+input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; flex: none; }
+.check { display: flex; gap: 10px; align-items: center; font-weight: 600; font-size: .95rem; }
+details > summary { cursor: pointer; font-weight: 650; color: var(--accent); padding-block: 4px; }
+details[open] > summary { margin-bottom: 12px; }
+
+.empty { background: var(--paper); border: 1px dashed var(--line); border-radius: var(--r); padding: 22px 18px; display: grid; gap: 10px; justify-items: start; }
+.welcome { display: grid; gap: 18px; }
+.welcome h1 { font-size: 2rem; }
+.points { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.tools { display: grid; gap: 4px; }
+.tools .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: .95rem; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgb(0 0 0 / .2); z-index: 10; }
+.file-btn { position: relative; display: inline-flex; align-items: center; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* Medication list for appointments */
+.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 22px 18px; display: grid; gap: 14px; }
+.sheet h1 { font-size: 1.5rem; }
+.sheet .scroll { overflow-x: auto; }
+.sheet table { border-collapse: collapse; width: 100%; font-size: .95rem; min-width: 560px; }
+.sheet th, .sheet td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+.sheet th { font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.write-lines { display: grid; gap: 22px; padding-top: 6px; }
+.write-lines span { border-bottom: 1px solid var(--line); height: 1px; }
+
+@media (max-width: 620px) {
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid2 { grid-template-columns: 1fr; }
+  .summary { gap: 6px; } .tally { padding: 10px; } .tally b { font-size: 1.6rem; }
+  .welcome h1 { font-size: 1.7rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+@media print {
+  :root { --bg: #fff; --paper: #fff; --ink: #000; --muted: #444; --line: #999; color-scheme: light; }
+  body { font-size: 11pt; padding: 0; }
+  .wrap { padding: 0; max-width: none; }
+  .wrap > :not(#medlistView), .noprint, .toast { display: none !important; }
+  .sheet { border: none; padding: 0; }
+  .sheet table { min-width: 0; }
+  @page { margin: 14mm; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top noprint">
+    <div class="brand"><span class="rx" aria-hidden="true">Rx</span><span><b style="font-size:1.15rem">Medicine Shelf</b><br><span class="note">Know when to reorder</span></span></div>
+    <button class="primary" id="addMedTop" type="button" hidden>Add a medicine</button>
+  </header>
+
+  <div class="banner warn" id="storageWarn" hidden>
+    <b>This browser isn't saving anything.</b>
+    <p>Private browsing or blocked site data stops the app from keeping your list. Open it in a regular browser window, or add it to your home screen.</p>
+  </div>
+
+  <div class="banner" id="installTip" hidden>
+    <b id="installTitle">Add Medicine Shelf to your home screen</b>
+    <p id="installText"></p>
+    <div class="actions">
+      <button class="primary" type="button" id="installBtn" hidden>Install</button>
+      <button type="button" id="installDismiss">Not now</button>
+    </div>
+  </div>
+
+  <!-- First run -->
+  <section class="welcome" id="welcome" hidden>
+    <h1>Never run out of a medicine again</h1>
+    <ul class="points">
+      <li>Counts down each medicine from the number you have and how many are taken a day.</li>
+      <li>Tells you the day to reorder, with time for the pharmacy and insurance limits built in.</li>
+      <li>Keeps a list for everyone in your home, and prints a medication list for appointments.</li>
+    </ul>
+    <p class="note">No sign-up. Everything you enter stays on this phone and is never sent anywhere.</p>
+    <form class="panel" id="firstPerson">
+      <label class="field" for="firstName"><span>Who takes medicine in your home? Start with one person.</span>
+        <input id="firstName" autocomplete="off" placeholder="e.g. Mom, or your first name" required maxlength="40"></label>
+      <div class="actions"><button class="primary" type="submit">Start my list</button><button type="button" data-act="example">See an example first</button></div>
+    </form>
+    <div class="actions"><button class="link" type="button" data-act="bigtext">Make the text larger</button><span class="note">·</span><span class="btn file-btn" style="border:none;padding:8px 2px;min-height:0;color:var(--accent);text-decoration:underline">Restore a backup<input type="file" class="restore-input" accept=".json,application/json" aria-label="Restore a backup file"></span></div>
+    <p class="note">Medicine Shelf tracks supply only. It does not give medical or dosing advice. Always follow your prescription label, your pharmacist and your doctor.</p>
+    <p class="note">Made by Frank DeCoste, a parent who built it for his own family. Questions about your medicines go to your pharmacy or prescriber.</p>
+  </section>
+
+  <!-- Main -->
+  <main id="main" hidden style="display:contents">
+    <div class="banner example noprint" id="exampleBanner" hidden>
+      <b>You're looking at an example household</b>
+      <p>These people and medicines are made up, to show how the app works. Clear them when you're ready to enter your own.</p>
+      <div class="actions"><button class="primary" type="button" data-act="clearExample">Clear the example and start my own</button></div>
+    </div>
+    <div class="chips noprint" id="chips" role="group" aria-label="Show medicines for"></div>
+
+    <section class="summary" aria-label="Summary" id="summary">
+      <div class="tally now"><span class="eyebrow">Order now</span><b id="cNow">0</b></div>
+      <div class="tally soon"><span class="eyebrow">Within 2 weeks</span><b id="cSoon">0</b></div>
+      <div class="tally ok"><span class="eyebrow">Stocked</span><b id="cOk">0</b></div>
+    </section>
+
+    <div class="banner" id="backupNudge" hidden>
+      <b>Back up your list</b>
+      <p>If this phone is lost or its browser data is cleared, your list goes with it. A backup file takes a few seconds.</p>
+      <div class="actions"><button class="primary" type="button" data-act="backup">Save a backup</button></div>
+    </div>
+
+    <form class="panel" id="personForm" hidden>
+      <h2 id="personFormTitle">Add a person</h2>
+      <div class="grid2">
+        <label class="field" for="p_name"><span>Name</span><input id="p_name" required maxlength="40" autocomplete="off"></label>
+        <label class="field" for="p_allergies"><span>Allergies <small>(optional)</small></span><input id="p_allergies" autocomplete="off" placeholder="Printed on the medication list"></label>
+      </div>
+      <div class="actions">
+        <button class="primary" type="submit">Save</button>
+        <button type="button" id="personCancel">Cancel</button>
+        <button class="danger" type="button" id="personDelete" hidden>Remove person</button>
+      </div>
+    </form>
+
+    <form class="panel" id="medForm" hidden>
+      <h2 id="medFormTitle">Add a medicine</h2>
+      <div class="grid2">
+        <label class="field" for="f_person"><span>For</span><select id="f_person" required></select></label>
+        <label class="field" for="f_name"><span>Medicine name</span><input id="f_name" required autocomplete="off" placeholder="As on the label"></label>
+        <label class="field" for="f_strength"><span>Strength</span><input id="f_strength" autocomplete="off" placeholder="e.g. 500 mg"></label>
+        <label class="field" for="f_unit"><span>Counted as</span>
+          <select id="f_unit"><option>tablets</option><option>capsules</option><option>mL</option><option>patches</option><option>inhalers</option><option>doses</option></select></label>
+        <label class="field" for="f_perDay"><span>How many a day</span><input id="f_perDay" type="number" min="0" step="0.25" inputmode="decimal" placeholder="e.g. 2"></label>
+        <label class="check" for="f_prn" style="align-self:end"><input id="f_prn" type="checkbox"> Taken only as needed</label>
+        <label class="field" for="f_min" id="minWrap" hidden><span>Reorder when fewer than</span><input id="f_min" type="number" min="0" inputmode="numeric" placeholder="e.g. 10"></label>
+        <label class="field" for="f_onHand"><span>How many you have right now</span><input id="f_onHand" type="number" min="0" step="0.5" inputmode="decimal" required></label>
+        <label class="field" for="f_countedOn"><span>Date counted</span><input id="f_countedOn" type="date" required></label>
+        <label class="field" for="f_instructions"><span>How it's taken <small>(for the medication list)</small></span><input id="f_instructions" autocomplete="off" placeholder="e.g. 1 tablet twice a day with food"></label>
+      </div>
+      <details id="rxDetails">
+        <summary>Prescription and pharmacy</summary>
+        <div class="grid2">
+          <label class="field" for="f_lastFill"><span>Last picked up</span><input id="f_lastFill" type="date"><small>Used to work out when insurance allows the next refill.</small></label>
+          <label class="field" for="f_fillDays"><span>Each fill lasts</span>
+            <select id="f_fillDays"><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label>
+          <label class="field" for="f_refills"><span>Refills left</span><input id="f_refills" type="number" min="0" inputmode="numeric" placeholder="On the bottle label"></label>
+          <label class="check" for="f_controlled" style="align-self:end"><input id="f_controlled" type="checkbox"> Needs a new prescription every fill</label>
+          <label class="field" for="f_prescriber"><span>Prescribed by</span><input id="f_prescriber" autocomplete="off"></label>
+          <label class="field" for="f_pharmacy"><span>Pharmacy</span><input id="f_pharmacy" autocomplete="off"></label>
+          <label class="field" for="f_pharmacyPhone"><span>Pharmacy phone</span><input id="f_pharmacyPhone" type="tel" autocomplete="off"></label>
+          <label class="field" for="f_rx"><span>Rx number</span><input id="f_rx" autocomplete="off"></label>
+        </div>
+      </details>
+      <details>
+        <summary>Timing</summary>
+        <div class="grid2">
+          <label class="field" for="f_lead"><span>Days the pharmacy needs</span><input id="f_lead" type="number" min="0" inputmode="numeric"></label>
+          <label class="field" for="f_buffer"><span>Extra days to be safe</span><input id="f_buffer" type="number" min="0" inputmode="numeric"></label>
+          <label class="field" for="f_pct"><span>Insurance allows a refill after</span><input id="f_pct" type="number" min="50" max="100" inputmode="numeric"><small>Percent of the last fill used. 75 to 80 is common; your pharmacy can tell you.</small></label>
+        </div>
+      </details>
+      <div class="actions">
+        <button class="primary" type="submit">Save</button>
+        <button type="button" id="medCancel">Cancel</button>
+        <button class="danger" type="button" id="medDelete" hidden>Remove medicine</button>
+      </div>
+    </form>
+
+    <div class="list" id="list"></div>
+
+    <section class="panel tools noprint" aria-labelledby="toolsH">
+      <h2 id="toolsH">Tools</h2>
+      <div class="row">
+        <button type="button" data-act="medlist">Medication list for appointments</button>
+        <button type="button" data-act="calendarAll">Add all order dates to my calendar</button>
+      </div>
+      <div class="row">
+        <button type="button" data-act="backup">Save a backup</button>
+        <span class="btn file-btn">Restore a backup<input type="file" id="restoreFile" accept=".json,application/json" aria-label="Restore a backup file"></span>
+      </div>
+      <p class="note" id="backupInfo"></p>
+      <details>
+        <summary>How the dates are worked out</summary>
+        <div class="note" style="display:grid;gap:8px">
+          <p>The count goes down by the daily amount from the day you last counted, so you only need to update it when you pick up a refill or recount.</p>
+          <p><b>Order on</b> is the day you'd run out, minus the days your pharmacy needs and a few extra days to be safe. It is never earlier than the day insurance is likely to allow the refill, based on when you last picked it up.</p>
+          <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count falls below the number you choose.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Privacy and limits</summary>
+        <div class="note" style="display:grid;gap:8px">
+          <p>Your list is stored only in this browser on this device. It is not sent to any server, your doctor or the people who host this page. Nobody can see it unless they have your phone.</p>
+          <p>Because it lives on this device, it does not sync between phones, and clearing your browser data erases it. Save a backup now and then.</p>
+          <p>Medicine Shelf tracks supply only. It does not give medical or dosing advice, and its dates are estimates. Always follow your prescription label, your pharmacist and your doctor.</p>
+        </div>
+      </details>
+      <div class="row"><button type="button" data-act="bigtext" id="bigTextBtn">Make the text larger</button></div>
+      <div class="row"><button class="link" type="button" data-act="erase">Erase everything on this device</button></div>
+      <p class="note">Medicine Shelf is free and made by Frank DeCoste. Questions about your medicines go to your pharmacy or prescriber.</p>
+    </section>
+  </main>
+
+  <!-- Medication list for appointments -->
+  <section id="medlistView" hidden>
+    <div class="actions noprint" style="margin-bottom:14px">
+      <button type="button" data-act="back">Back</button>
+      <label class="field" for="mlPerson" style="flex:1 1 180px"><select id="mlPerson" aria-label="Whose list"></select></label>
+      <button class="primary" type="button" data-act="print">Print or save as PDF</button>
+    </div>
+    <article class="sheet" id="sheet"></article>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+  const KEY = 'medicine-shelf.v1';
+  const DEFAULTS = { leadDays: 3, bufferDays: 7, eligiblePct: 75, fillDays: 30 };
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- storage ----------
+  let storageOK = true;
+  try { localStorage.setItem(KEY + '.probe', '1'); localStorage.removeItem(KEY + '.probe'); } catch (e) { storageOK = false; }
+  const blank = () => ({ version: 1, people: [], meds: [], meta: {} });
+  function load() {
+    try { const raw = localStorage.getItem(KEY); return raw ? Object.assign(blank(), JSON.parse(raw)) : blank(); }
+    catch (e) { storageOK = false; return blank(); }
+  }
+  let state = load();
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
+    catch (e) { storageOK = false; $('storageWarn').hidden = false; return false; }
+  }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  // ---------- dates as local calendar days ----------
+  const pad = (n) => String(n).padStart(2, '0');
+  const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+  const today = () => toStr(new Date());
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return toStr(d); };
+  const diff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+  const maxDate = (a, b) => (!a ? b : !b ? a : a > b ? a : b);
+  const nice = (s) => {
+    if (!s) return '—';
+    const d = parse(s);
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+  };
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const val = (m, k) => (m[k] ?? DEFAULTS[k]);
+  const isScheduled = (m) => !m.prn && m.perDay > 0;
+  const personName = (id) => (state.people.find((p) => p.id === id) || {}).name || 'Someone';
+
+  // ---------- order math ----------
+  function plan(m) {
+    const out = { runOut: null, orderBy: null, eligible: null, orderOn: null, callDoctor: null, tight: false, needsScript: !!m.controlled || m.refillsLeft === 0 };
+    if (!isScheduled(m)) return out;
+    const fillQty = m.perDay * val(m, 'fillDays');
+    out.runOut = addDays(m.countedOn, Math.floor(m.onHand / m.perDay));
+    out.orderBy = addDays(out.runOut, -(val(m, 'leadDays') + val(m, 'bufferDays')));
+    if (m.lastFillDate) {
+      out.eligible = addDays(m.lastFillDate, Math.ceil((fillQty / m.perDay) * (val(m, 'eligiblePct') / 100)));
+      out.tight = out.eligible > addDays(out.runOut, -val(m, 'leadDays'));
+    }
+    out.orderOn = maxDate(out.orderBy, out.eligible);
+    if (out.needsScript) out.callDoctor = addDays(out.orderOn, -7);
+    return out;
+  }
+  function live(m) {
+    const t = today();
+    if (!isScheduled(m)) {
+      const status = m.minCount != null && m.onHand <= m.minCount ? 'now' : m.minCount != null && m.onHand <= m.minCount * 1.5 ? 'soon' : 'ok';
+      return { est: m.onHand, daysLeft: null, status, p: plan(m) };
+    }
+    const est = Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, t)));
+    const p = plan(m);
+    const status = p.orderOn <= t || (p.tight && p.orderBy <= t) ? 'now' : diff(t, p.orderOn) <= 14 ? 'soon' : 'ok';
+    return { est, daysLeft: Math.floor(est / m.perDay), status, p };
+  }
+
+  // ---------- helpers ----------
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(String(k)));
+    return n;
+  };
+  const fmt = (n) => (Number.isInteger(n) ? String(n) : (Math.round(n * 10) / 10).toString());
+  const unitFor = (n, unit) => (n === 1 && /s$/.test(unit) ? unit.slice(0, -1) : unit);
+  let toastTimer;
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200); }
+  function scrollTo(node) { node.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
+  function downloadFile(name, text, type) {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  // ---------- view state ----------
+  let view = 'home', filter = 'all', editingMed = null, editingPerson = null, openAction = null;
+
+  function render() {
+    $('storageWarn').hidden = storageOK;
+    $('exampleBanner').hidden = !state.people.some((p) => p.example);
+    const has = state.people.length > 0;
+    $('welcome').hidden = has || view !== 'home';
+    $('main').hidden = !has || view !== 'home';
+    $('main').style.display = $('main').hidden ? 'none' : 'contents';
+    $('addMedTop').hidden = !has || view !== 'home';
+    $('medlistView').hidden = view !== 'medlist';
+    if (view === 'medlist') return renderSheet();
+    if (!has) return;
+    if (filter !== 'all' && !state.people.some((p) => p.id === filter)) filter = 'all';
+    renderChips(); renderCards(); renderTools();
+  }
+
+  function renderChips() {
+    const c = $('chips'); c.replaceChildren();
+    if (state.people.length === 1) filter = state.people[0].id;
+    const mk = (id, label) => el('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === id), onclick: () => { filter = id; openAction = null; render(); } }, label);
+    if (state.people.length > 1) c.append(mk('all', 'Everyone'));
+    for (const p of state.people) c.append(mk(p.id, p.name));
+    c.append(el('button', { class: 'chip add', type: 'button', onclick: () => openPersonForm() }, '+ Add person'));
+    if (filter !== 'all') c.append(el('button', { class: 'link', type: 'button', onclick: () => openPersonForm(state.people.find((p) => p.id === filter)) }, `Edit ${personName(filter)}`));
+  }
+
+  function renderCards() {
+    const rows = state.meds.map((m) => ({ m, l: live(m) }));
+    const inView = rows.filter((r) => filter === 'all' || r.m.personId === filter);
+    $('cNow').textContent = inView.filter((r) => r.l.status === 'now').length;
+    $('cSoon').textContent = inView.filter((r) => r.l.status === 'soon').length;
+    $('cOk').textContent = inView.filter((r) => r.l.status === 'ok').length;
+    const rank = { now: 0, soon: 1, ok: 2 };
+    inView.sort((a, b) => rank[a.l.status] - rank[b.l.status] || (a.l.p.orderOn || '9999').localeCompare(b.l.p.orderOn || '9999') || a.m.name.localeCompare(b.m.name));
+    const list = $('list'); list.replaceChildren();
+    if (!inView.length) {
+      const who = filter === 'all' ? 'anyone' : personName(filter);
+      list.append(el('div', { class: 'empty' },
+        el('h3', {}, `No medicines for ${who} yet`),
+        el('p', { class: 'note' }, 'Grab the bottle. Enter the name, how many are taken a day and how many are in it right now. The app works out the rest.'),
+        el('button', { class: 'primary', type: 'button', onclick: () => openMedForm() }, 'Add a medicine')));
+    }
+    for (const { m, l } of inView) list.append(card(m, l));
+    const last = state.meta.lastBackup;
+    $('backupNudge').hidden = !(state.meds.filter((m) => !m.example).length >= 2 && (!last || diff(last, today()) > 60));
+  }
+
+  function card(m, l) {
+    const t = today(), p = l.p;
+    const facts = el('div', { class: 'facts' });
+    const fact = (label, value, big) => el('div', { class: 'fact' + (big ? ' big' : '') }, el('span', { class: 'eyebrow' }, label), el('span', { class: 'v' }, value));
+    if (isScheduled(m)) {
+      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Have now', `≈ ${Math.floor(l.est)}`));
+    } else {
+      facts.append(fact('Have now', fmt(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
+    }
+    const warns = [];
+    if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, `Insurance may not allow this refill until ${nice(p.eligible)}, but it runs out ${nice(p.runOut)}. Call the pharmacy now, or recount in case the number is off.`));
+    if (m.controlled) warns.push(el('div', { class: 'warn-line' }, `Needs a new prescription each time. Ask the doctor's office by ${nice(p.callDoctor)}.`));
+    else if (m.refillsLeft === 0) warns.push(el('div', { class: 'warn-line' }, `No refills left. Ask the doctor's office for a new prescription by ${p.callDoctor ? nice(p.callDoctor) : 'your next order'}.`));
+    if (isScheduled(m) && diff(m.countedOn, t) > 120) warns.push(el('div', { class: 'warn-line' }, `Last counted ${nice(m.countedOn)}. A quick recount keeps the dates right.`));
+
+    const meta = el('div', { class: 'meta' },
+      isScheduled(m) ? el('span', {}, `${fmt(m.perDay)} ${unitFor(m.perDay, m.unit)}/day`) : null,
+      p.eligible ? el('span', {}, `Refill allowed from ${nice(p.eligible)}`) : null,
+      m.refillsLeft != null ? el('span', {}, `${m.refillsLeft} refill${m.refillsLeft === 1 ? '' : 's'} left`) : null,
+      m.pharmacy ? el('span', {}, m.pharmacy) : null,
+      m.pharmacyPhone ? el('a', { href: 'tel:' + m.pharmacyPhone.replace(/[^\d+]/g, '') }, m.pharmacyPhone) : null,
+      m.rxNumber ? el('span', {}, `Rx ${m.rxNumber}`) : null);
+
+    const actions = el('div', { class: 'actions' },
+      el('button', { class: 'primary', type: 'button', onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
+      el('button', { type: 'button', onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
+      isScheduled(m) ? el('button', { type: 'button', onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
+      el('button', { class: 'link', type: 'button', onclick: () => openMedForm(m) }, 'Edit'));
+
+    const body = el('div', { class: 'label-body' }, facts, warns, meta, actions);
+    if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
+    const label = { now: 'Order now', soon: 'Order soon', ok: 'Stocked' }[l.status];
+    return el('article', { class: 'label' },
+      el('div', { class: 'label-head' },
+        el('h3', {}, m.name, m.strength ? ` ${m.strength}` : ''),
+        el('div', { class: 'actions' }, state.people.length > 1 ? el('span', { class: 'who' }, personName(m.personId)) : null, el('span', { class: 'pill ' + l.status }, label))),
+      body);
+  }
+
+  function toggleAction(id, kind) { openAction = openAction && openAction.id === id && openAction.kind === kind ? null : { id, kind }; render(); }
+  function actionForm(m, l, kind) {
+    const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
+    const qty = el('input', { id: qid, type: 'number', min: '0', step: '0.5', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : Math.floor(l.est) });
+    const date = el('input', { id: did, type: 'date', value: today() });
+    const go = el('button', { class: 'primary', type: 'button' }, kind === 'refill' ? 'Add to count' : 'Save count');
+    go.addEventListener('click', () => {
+      const q = Number(qty.value);
+      if (qty.value === '' || !(q >= 0) || !date.value) return toast('Enter a number and a date.');
+      const d = date.value;
+      const est = isScheduled(m) ? Math.max(0, m.onHand - m.perDay * Math.max(0, diff(m.countedOn, d))) : m.onHand;
+      if (kind === 'refill') {
+        Object.assign(m, { onHand: est + q, countedOn: d, lastFillDate: d });
+        if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
+      } else Object.assign(m, { onHand: q, countedOn: d });
+      openAction = null; save(); render();
+      toast(kind === 'refill' ? `Added ${fmt(q)} to ${m.name}.` : `Saved the count for ${m.name}.`);
+    });
+    return el('div', { class: 'inline' },
+      el('label', { for: qid }, kind === 'refill' ? 'How many you picked up' : `How many ${m.unit} you have`, qty),
+      el('label', { for: did }, kind === 'refill' ? 'Picked up on' : 'Counted on', date),
+      go, el('button', { type: 'button', onclick: () => { openAction = null; render(); } }, 'Cancel'));
+  }
+
+  function renderTools() {
+    const last = state.meta.lastBackup;
+    $('backupInfo').textContent = last ? `Last backup saved ${nice(last)}.` : 'No backup saved yet.';
+  }
+
+  // ---------- people ----------
+  function openPersonForm(p) {
+    editingPerson = p ? p.id : null;
+    $('personFormTitle').textContent = p ? `Edit ${p.name}` : 'Add a person';
+    $('p_name').value = p ? p.name : ''; $('p_allergies').value = p ? p.allergies || '' : '';
+    $('personDelete').hidden = !p;
+    $('medForm').hidden = true; $('personForm').hidden = false; scrollTo($('personForm')); $('p_name').focus({ preventScroll: true });
+  }
+  $('personForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('p_name').value.trim(); if (!name) return;
+    if (editingPerson) Object.assign(state.people.find((p) => p.id === editingPerson), { name, allergies: $('p_allergies').value.trim() });
+    else { const p = { id: uid(), name, allergies: $('p_allergies').value.trim() }; state.people.push(p); filter = p.id; }
+    save(); $('personForm').hidden = true; render(); toast(`Saved ${name}.`);
+  });
+  $('personCancel').addEventListener('click', () => { $('personForm').hidden = true; });
+  $('personDelete').addEventListener('click', () => {
+    const p = state.people.find((x) => x.id === editingPerson); if (!p) return;
+    const n = state.meds.filter((m) => m.personId === p.id).length;
+    if (!confirm(`Remove ${p.name}${n ? ` and their ${n} medicine${n === 1 ? '' : 's'}` : ''}? This can't be undone.`)) return;
+    state.people = state.people.filter((x) => x.id !== p.id); state.meds = state.meds.filter((m) => m.personId !== p.id);
+    filter = 'all'; save(); $('personForm').hidden = true; render(); toast(`Removed ${p.name}.`);
+  });
+  $('firstPerson').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('firstName').value.trim(); if (!name) return;
+    const p = { id: uid(), name, allergies: '' };
+    state.people.push(p); filter = p.id; save(); render(); openMedForm();
+  });
+
+  // ---------- medicines ----------
+  const F = (k) => $('f_' + k);
+  const numOrNull = (v) => (v === '' || v == null ? null : Number(v));
+  function openMedForm(m) {
+    editingMed = m ? m.id : null;
+    $('medFormTitle').textContent = m ? `Edit ${m.name}` : 'Add a medicine';
+    F('person').replaceChildren(...state.people.map((p) => new Option(p.name, p.id)));
+    F('person').value = m ? m.personId : filter !== 'all' ? filter : state.people[0].id;
+    F('name').value = m?.name || ''; F('strength').value = m?.strength || ''; F('unit').value = m?.unit || 'tablets';
+    F('perDay').value = m?.perDay ?? ''; F('prn').checked = !!m?.prn; F('min').value = m?.minCount ?? ''; $('minWrap').hidden = !F('prn').checked;
+    F('onHand').value = m ? Math.floor(live(m).est) : ''; F('countedOn').value = today();
+    F('instructions').value = m?.instructions || '';
+    F('lastFill').value = m?.lastFillDate || ''; F('fillDays').value = String(val(m || {}, 'fillDays')); F('refills').value = m?.refillsLeft ?? '';
+    F('controlled').checked = !!m?.controlled; F('prescriber').value = m?.prescriber || ''; F('pharmacy').value = m?.pharmacy || '';
+    F('pharmacyPhone').value = m?.pharmacyPhone || ''; F('rx').value = m?.rxNumber || '';
+    F('lead').value = val(m || {}, 'leadDays'); F('buffer').value = val(m || {}, 'bufferDays'); F('pct').value = val(m || {}, 'eligiblePct');
+    $('medDelete').hidden = !m;
+    $('personForm').hidden = true; $('medForm').hidden = false; scrollTo($('medForm')); F('name').focus({ preventScroll: true });
+  }
+  F('prn').addEventListener('change', () => { $('minWrap').hidden = !F('prn').checked; });
+  $('medCancel').addEventListener('click', () => { $('medForm').hidden = true; });
+  $('addMedTop').addEventListener('click', () => openMedForm());
+  $('medDelete').addEventListener('click', () => {
+    const m = state.meds.find((x) => x.id === editingMed); if (!m) return;
+    if (!confirm(`Remove ${m.name}? This can't be undone.`)) return;
+    state.meds = state.meds.filter((x) => x.id !== m.id); save(); $('medForm').hidden = true; render(); toast(`Removed ${m.name}.`);
+  });
+  $('medForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const prn = F('prn').checked, perDay = numOrNull(F('perDay').value);
+    if (!prn && !(perDay > 0)) { toast('Enter how many a day, or tick "Taken only as needed".'); F('perDay').focus(); return; }
+    const prev = state.meds.find((x) => x.id === editingMed);
+    const m = Object.assign(prev || { id: uid() }, {
+      personId: F('person').value, name: F('name').value.trim(), strength: F('strength').value.trim(), unit: F('unit').value,
+      perDay: perDay || 0, prn, minCount: prn ? numOrNull(F('min').value) : null,
+      onHand: Number(F('onHand').value), countedOn: F('countedOn').value, instructions: F('instructions').value.trim(),
+      lastFillDate: F('lastFill').value || null, fillDays: Number(F('fillDays').value), refillsLeft: numOrNull(F('refills').value),
+      controlled: F('controlled').checked, prescriber: F('prescriber').value.trim(), pharmacy: F('pharmacy').value.trim(),
+      pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(),
+      leadDays: numOrNull(F('lead').value) ?? DEFAULTS.leadDays, bufferDays: numOrNull(F('buffer').value) ?? DEFAULTS.bufferDays,
+      eligiblePct: numOrNull(F('pct').value) ?? DEFAULTS.eligiblePct,
+    });
+    if (!prev) state.meds.push(m);
+    save(); $('medForm').hidden = true; filter = state.people.length > 1 && filter === 'all' ? 'all' : m.personId; render();
+    toast(`Saved ${m.name}.`);
+  });
+
+  // ---------- calendar (.ics) ----------
+  function fold(line) {
+    const enc = new TextEncoder(); const parts = []; let cur = '', bytes = 0, limit = 75;
+    for (const ch of line) { const b = enc.encode(ch).length; if (bytes + b > limit) { parts.push(cur); cur = ''; bytes = 0; limit = 74; } cur += ch; bytes += b; }
+    parts.push(cur); return parts.join('\r\n ');
+  }
+  const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+  const ymd = (s) => s.replace(/-/g, '');
+  function vevent(id, date, summary, description) {
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    return ['BEGIN:VEVENT', `UID:${id}@medicine-shelf`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(date)}`, `DTEND;VALUE=DATE:${ymd(addDays(date, 1))}`,
+      `SUMMARY:${esc(summary)}`, `DESCRIPTION:${esc(description)}`, 'TRANSP:TRANSPARENT',
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(summary)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT'];
+  }
+  function buildIcs(meds) {
+    const t = today(), lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Medicine Shelf//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+    for (const m of meds) {
+      const p = plan(m); if (!p.orderOn) continue;
+      const who = personName(m.personId);
+      const details = [`Runs out about ${nice(p.runOut)}.`, m.pharmacy && `Pharmacy: ${m.pharmacy}`, m.pharmacyPhone && `Phone: ${m.pharmacyPhone}`, m.rxNumber && `Rx: ${m.rxNumber}`].filter(Boolean).join('\n');
+      lines.push(...vevent(`${m.id}-order-${p.orderOn}`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));
+      if (p.needsScript) lines.push(...vevent(`${m.id}-script-${p.orderOn}`, maxDate(p.callDoctor, t), `Ask for a new ${m.name} prescription for ${who}`, `Order date is ${nice(p.orderOn)}.`));
+    }
+    lines.push('END:VCALENDAR');
+    return lines.map(fold).join('\r\n') + '\r\n';
+  }
+  function addToCalendar(meds) {
+    const sched = meds.filter(isScheduled);
+    if (!sched.length) return toast('No scheduled medicines to add yet.');
+    downloadFile(sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics', buildIcs(sched), 'text/calendar');
+    toast('Calendar file made. Open it to add the reminder.');
+  }
+
+  // ---------- backup ----------
+  async function backup() {
+    const name = `medicine-shelf-backup-${today()}.json`;
+    const text = JSON.stringify({ app: 'medicine-shelf', version: 1, exportedAt: new Date().toISOString(), data: state }, null, 2);
+    const file = typeof File === 'function' ? new File([text], name, { type: 'application/json' }) : null;
+    try {
+      if (file && navigator.canShare && navigator.canShare({ files: [file] }) && /android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        await navigator.share({ files: [file], title: 'Medicine Shelf backup' });
+      } else downloadFile(name, text, 'application/json');
+    } catch (e) { if (e && e.name === 'AbortError') return; downloadFile(name, text, 'application/json'); }
+    state.meta.lastBackup = today(); save(); render(); toast('Backup saved. Keep it somewhere safe, like your email or cloud storage.');
+  }
+  const onRestore = (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const j = JSON.parse(r.result);
+        if (j.app !== 'medicine-shelf' || !j.data || !Array.isArray(j.data.people) || !Array.isArray(j.data.meds)) throw new Error('not ours');
+        if (state.meds.length && !confirm(`Replace the list on this device with the backup from ${nice(String(j.exportedAt || '').slice(0, 10)) || 'that file'}?`)) return;
+        state = Object.assign(blank(), j.data); filter = 'all'; view = 'home'; save(); render(); toast('Backup restored.');
+      } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
+    };
+    r.readAsText(f);
+  };
+  document.querySelectorAll('#restoreFile, .restore-input').forEach((inp) => inp.addEventListener('change', onRestore));
+
+  // ---------- example household (for demos and first-time visitors) ----------
+  function loadExample() {
+    const d = (n) => addDays(today(), n);
+    const ex = { example: true };
+    state.people.push(
+      { id: 'ex-p1', name: 'Pat (example)', allergies: 'Penicillin', ...ex },
+      { id: 'ex-p2', name: 'Jamie (example)', allergies: '', ...ex });
+    state.meds.push(
+      { id: 'ex-m1', personId: 'ex-p1', name: 'Metformin', strength: '500 mg', unit: 'tablets', perDay: 2, prn: false, onHand: 160, countedOn: d(0), lastFillDate: d(-10), fillDays: 90, refillsLeft: 3, pharmacy: 'Main Street Pharmacy', rxNumber: '1000001', prescriber: 'Dr. Example', instructions: '1 tablet twice a day with food', ...ex },
+      { id: 'ex-m2', personId: 'ex-p1', name: 'Lisinopril', strength: '10 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 12, countedOn: d(0), lastFillDate: d(-78), fillDays: 90, refillsLeft: 0, pharmacy: 'Main Street Pharmacy', rxNumber: '1000002', prescriber: 'Dr. Example', instructions: '1 tablet every morning', ...ex },
+      { id: 'ex-m3', personId: 'ex-p2', name: 'Methylphenidate ER', strength: '36 mg', unit: 'tablets', perDay: 1, prn: false, onHand: 9, countedOn: d(0), lastFillDate: d(-21), fillDays: 30, controlled: true, eligiblePct: 80, pharmacy: 'Main Street Pharmacy', prescriber: 'Dr. Example', instructions: '1 tablet every morning', ...ex },
+      { id: 'ex-m4', personId: 'ex-p2', name: 'Albuterol inhaler', strength: '90 mcg', unit: 'inhalers', perDay: 0, prn: true, minCount: 1, onHand: 1, countedOn: d(-5), instructions: 'As needed for wheezing', ...ex });
+    filter = 'all'; view = 'home'; save(); render(); window.scrollTo(0, 0);
+  }
+  function clearExample() {
+    state.people = state.people.filter((p) => !p.example);
+    state.meds = state.meds.filter((m) => !m.example);
+    filter = 'all'; save(); render(); window.scrollTo(0, 0);
+    if (!state.people.length) $('firstName').focus();
+  }
+
+  // ---------- larger text (a per-device display setting) ----------
+  const BIG = KEY + '.bigText';
+  function applyBig(on) {
+    document.documentElement.classList.toggle('big', on);
+    document.querySelectorAll('[data-act="bigtext"]').forEach((b) => (b.textContent = on ? 'Make the text normal size' : 'Make the text larger'));
+  }
+  try { applyBig(localStorage.getItem(BIG) === '1'); } catch (e) {}
+
+  // ---------- medication list for appointments ----------
+  function renderSheet() {
+    const sel = $('mlPerson');
+    if (!sel.options.length || sel.options.length !== state.people.length) {
+      sel.replaceChildren(...state.people.map((p) => new Option(`${p.name}'s list`, p.id)));
+      sel.value = filter !== 'all' ? filter : state.people[0].id;
+    }
+    const p = state.people.find((x) => x.id === sel.value) || state.people[0];
+    const meds = state.meds.filter((m) => m.personId === p.id).sort((a, b) => a.name.localeCompare(b.name));
+    const how = (m) => m.instructions || (m.prn ? 'As needed' : `${fmt(m.perDay)} ${unitFor(m.perDay, m.unit)} a day`);
+    const sheet = $('sheet'); sheet.replaceChildren(
+      el('div', {}, el('span', { class: 'eyebrow' }, 'Medication list'), el('h1', {}, p.name), el('p', { class: 'note' }, `Updated ${nice(today())}`)),
+      el('p', {}, el('b', {}, 'Allergies: '), p.allergies || '____________________________________'),
+      meds.length
+        ? el('div', { class: 'scroll' }, el('table', {},
+            el('thead', {}, el('tr', {}, ['Medicine', 'Strength', 'How it is taken', 'Prescribed by', 'Pharmacy and Rx'].map((h) => el('th', { scope: 'col' }, h)))),
+            el('tbody', {}, meds.map((m) => el('tr', {},
+              el('td', {}, el('b', {}, m.name)), el('td', {}, m.strength || ''), el('td', {}, how(m)), el('td', {}, m.prescriber || ''),
+              el('td', {}, [m.pharmacy, m.rxNumber && `Rx ${m.rxNumber}`].filter(Boolean).join(' · ')))))))
+        : el('p', { class: 'note' }, `No medicines entered for ${p.name} yet.`),
+      el('div', {}, el('b', {}, 'Other medicines, vitamins or supplements'), el('div', { class: 'write-lines' }, el('span'), el('span'))),
+      el('div', {}, el('b', {}, 'Changes made at this visit'), el('div', { class: 'write-lines' }, el('span'), el('span'), el('span'))),
+      el('p', { class: 'note' }, 'Show this list at appointments and the pharmacy. Made with Medicine Shelf, which tracks supply only.'));
+  }
+  $('mlPerson').addEventListener('change', renderSheet);
+
+  // ---------- tool buttons ----------
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'medlist') { view = 'medlist'; $('mlPerson').replaceChildren(); render(); window.scrollTo(0, 0); }
+    else if (act === 'back') { view = 'home'; render(); }
+    else if (act === 'print') window.print();
+    else if (act === 'calendarAll') addToCalendar(state.meds.filter((m) => filter === 'all' || m.personId === filter));
+    else if (act === 'backup') backup();
+    else if (act === 'example') loadExample();
+    else if (act === 'clearExample') clearExample();
+    else if (act === 'bigtext') {
+      const on = !document.documentElement.classList.contains('big');
+      applyBig(on); try { localStorage.setItem(BIG, on ? '1' : '0'); } catch (err) {}
+    }
+    else if (act === 'erase') {
+      if (!confirm('Erase every person and medicine on this device? Save a backup first if you might want them back.')) return;
+      state = blank(); filter = 'all'; save(); render(); toast('Everything on this device was erased.');
+    }
+  });
+
+  // ---------- install help ----------
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const dismissed = () => { try { return localStorage.getItem(KEY + '.installDismissed') === '1'; } catch (e) { return false; } };
+  $('installDismiss').addEventListener('click', () => { $('installTip').hidden = true; try { localStorage.setItem(KEY + '.installDismissed', '1'); } catch (e) {} });
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); deferredPrompt = e;
+    if (dismissed()) return;
+    $('installText').textContent = 'It opens like an app, works without internet, and keeps your list safer.';
+    $('installBtn').hidden = false; $('installTip').hidden = false;
+  });
+  $('installBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice.catch(() => {}); deferredPrompt = null; $('installTip').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('installTip').hidden = true; });
+  if (isIOS && !standalone && !dismissed()) {
+    $('installText').textContent = 'In Safari, tap the Share button, then "Add to Home Screen". This matters on iPhone: Safari can erase saved lists for websites you haven\'t opened in a while, but not for apps on your home screen.';
+    $('installTip').hidden = false;
+  }
+
+  // ---------- offline ----------
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // Refresh "days left" when the app comes back to the front on a new day.
+  let lastDay = today();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && today() !== lastDay) { lastDay = today(); render(); } });
+
+  window.__medShelf = { plan, buildIcs, get state() { return state; } };
+  render();
+})();
+</script>
+</body>
+</html>

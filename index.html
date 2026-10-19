@@ -650,7 +650,7 @@ details[open] > summary { margin-bottom: 12px; }
     F('person').replaceChildren(...state.people.map((p) => new Option(p.name, p.id)));
     F('person').value = m ? m.personId : filter !== 'all' ? filter : state.people[0].id;
     F('name').value = m?.name || ''; F('strength').value = m?.strength || ''; F('unit').value = m?.unit || 'tablets';
-    F('perDay').value = m?.perDay ?? ''; F('prn').checked = !!m?.prn; F('min').value = m?.minCount ?? ''; $('minWrap').hidden = !F('prn').checked;
+    F('perDay').value = m?.perDay ?? ''; F('prn').checked = !!m?.prn; F('min').value = m?.minCount ?? ''; $('minWrap').hidden = !F('prn').checked; F('min').required = F('prn').checked;
     // Editing never touches the count: only Recount and Picked up a refill change it.
     F('onHand').value = ''; F('countedOn').value = today();
     for (const id of ['onHandWrap', 'countedOnWrap']) $(id).hidden = !!m;
@@ -664,7 +664,7 @@ details[open] > summary { margin-bottom: 12px; }
     $('medDelete').hidden = !m;
     $('personForm').hidden = true; $('medForm').hidden = false; scrollTo($('medForm')); F('name').focus({ preventScroll: true });
   }
-  F('prn').addEventListener('change', () => { $('minWrap').hidden = !F('prn').checked; });
+  F('prn').addEventListener('change', () => { $('minWrap').hidden = !F('prn').checked; F('min').required = F('prn').checked; });
   $('medCancel').addEventListener('click', () => { $('medForm').hidden = true; });
   $('addMedTop').addEventListener('click', () => openMedForm());
   $('medDelete').addEventListener('click', () => {
@@ -682,6 +682,8 @@ details[open] > summary { margin-bottom: 12px; }
     if (neg('perDay')) return void bad('perDay', "How many a day can't be negative.");
     if (!editingMed && neg('onHand')) return void bad('onHand', "How many you have can't be negative.");
     if (prn && neg('min')) return void bad('min', "The reorder number can't be negative.");
+    // Without a reorder number an as-needed medicine could never show 'Order now'.
+    if (prn && numOrNull(F('min').value) == null) return void bad('min', 'Enter how many to reorder below, so the app can tell you when to reorder.');
     const refills = numOrNull(F('refills').value);
     if (refills != null && !(Number.isInteger(refills) && refills >= 0)) return void bad('refills', 'Refills left should be a whole number, 0 or more.');
     if (neg('lead')) return void bad('lead', "Days the pharmacy needs can't be negative.");

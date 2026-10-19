@@ -196,5 +196,18 @@ test('expiry: expired is urgent, within 30 days is soon, before run-out is flagg
   assert.equal(SM.live({ ...prn, expiresOn: 'soon' }, '2026-10-19').action, 'ok');
 });
 
+test('expired medicine keeps its refill in progress', () => {
+  const m = { prn: true, perDay: 0, onHand: 2, minCount: 1, countedOn: '2026-10-01', expiresOn: '2026-10-10',
+    refill: { stage: 'requested', requestedOn: '2026-10-15' } };
+  const l = SM.live(m, '2026-10-19');
+  assert.equal(l.action, 'expired');          // expiry sets the label...
+  assert.equal(l.status, 'now');
+  assert.equal(l.refillStage, 'requested');   // ...but the refill progress is still there
+  assert.equal(l.stageDays, 4);
+  assert.equal(l.stageUrgent, false);         // urgent because expired, not because the supply is out
+  const ready = SM.live({ ...m, refill: { stage: 'ready', requestedOn: '2026-10-15', readyOn: '2026-10-17' } }, '2026-10-19');
+  assert.equal(ready.refillStage, 'ready'); assert.equal(ready.stageSince, '2026-10-17');
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

@@ -38,7 +38,10 @@
   }
 
   // What the card shows on day t.
-  // action: 'order' | 'script' | 'soon' | 'ok', or the refill stage 'requested' | 'ready' while one is in progress.
+  // action: the card's label: 'order' | 'script' | 'soon' | 'ok', the refill stage 'requested' | 'ready',
+  //   or 'expired' | 'expiring'.
+  // refillStage: 'requested' | 'ready' | undefined. Kept separately from action, so a refill already in
+  //   progress still shows (and keeps its buttons) when expiry takes over the label.
   const EXPIRY_SOON_DAYS = 30;
   function live(m, t) {
     const out = baseLive(m, t);
@@ -54,6 +57,8 @@
     if (stage === 'requested' || stage === 'ready') {
       // A refill in progress is not a refill in hand: it stays urgent when the supply is about to run out.
       const urgent = isScheduled(m) ? out.daysLeft <= val(m, 'leadDays') : m.onHand <= 0;
+      out.refillStage = stage;
+      out.stageUrgent = urgent; // urgent because of the supply itself (not because of expiry)
       out.status = urgent ? 'now' : 'soon';
       out.action = stage;
       out.stageSince = stage === 'ready' ? m.refill.readyOn : m.refill.requestedOn;

@@ -210,10 +210,11 @@
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
       ? `The pharmacy's next refill date is ${nice(p.eligible)}, but it runs out about ${nice(p.runOut)}. Call the pharmacy or prescriber now.`
       : `Insurance may not allow this refill until about ${nice(p.eligible)} (an estimate), but it runs out about ${nice(p.runOut)}. Call the pharmacy now, or recount in case the number is off.`));
-    const stage = l.action === 'requested' || l.action === 'ready' ? l.action : null;
-    if (stage === 'requested' && l.stageDays >= 5) warns.push(el('div', { class: 'warn-line' + (l.status === 'now' ? ' hard' : '') }, `Requested ${l.stageDays} days ago and not marked ready. Check with the pharmacy${p.needsScript ? " or the prescriber's office" : ''}.`));
+    // Read the refill stage from its own field: expiry can take over the label without hiding a refill in progress.
+    const stage = l.refillStage || null;
+    if (stage === 'requested' && l.stageDays >= 5) warns.push(el('div', { class: 'warn-line' + (l.stageUrgent ? ' hard' : '') }, `Requested ${l.stageDays} days ago and not marked ready. Check with the pharmacy${p.needsScript ? " or the prescriber's office" : ''}.`));
     if (stage === 'ready' && l.stageDays >= 7) warns.push(el('div', { class: 'warn-line' }, `Ready since ${nice(l.stageSince)}. Pharmacies may put unclaimed refills back after a week or two.`));
-    if (stage && l.status === 'now') warns.push(el('div', { class: 'warn-line hard' }, isScheduled(m) ? `Only about ${l.daysLeft} day${l.daysLeft === 1 ? '' : 's'} left. Make sure this refill reaches you in time.` : 'None left. Make sure this refill reaches you soon.'));
+    if (stage && l.stageUrgent) warns.push(el('div', { class: 'warn-line hard' }, isScheduled(m) ? `Only about ${l.daysLeft} day${l.daysLeft === 1 ? '' : 's'} left. Make sure this refill reaches you in time.` : 'None left. Make sure this refill reaches you soon.'));
     if (p.needsScript && !stage) {
       const why = m.controlled ? 'Needs a new prescription each time.' : 'No refills left.';
       const scriptNow = l.action === 'script' || (l.action === 'order' && !isScheduled(m));

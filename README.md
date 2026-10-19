@@ -9,7 +9,7 @@ A free, private web app that families install on their phones to track how much 
 | `index.html` | The app's page and styles |
 | `app.js` | Everything the app does (kept out of the page so the security policy can block any other script) |
 | `shelf-math.js` | The date and supply math, kept separate so it can be tested |
-| `tests/run.mjs` | Tests for the math, restore checks, damaged-data handling, undo window and expiry: `TZ=America/New_York node tests/run.mjs` (no installs needed) |
+| `tests/run.mjs` | Tests for the math, refills, decimals, the shared data checks, damaged-data handling, the undo window and expiry: `TZ=America/New_York node tests/run.mjs` (no installs needed) |
 | `manifest.webmanifest`, `icon-*.png`, `apple-touch-icon.png` | Let phones install it to the home screen with its own icon |
 | `sw.js` | Lets the app open with no internet |
 | `flyer.html` + `flyer.js` + `qrcode.js` | Printable one-page flyer with a QR code that points to wherever you host the app |
@@ -38,7 +38,8 @@ Families' data is not affected by updates. It lives in their browser under the k
 
 - **A list it can't read is never overwritten.** If the saved data is damaged, the app keeps a copy under `medicine-shelf.v1.unreadable`, stops saving, and offers Restore a backup, Save the damaged copy as a file, or Start a new list (which still keeps the copy).
 - **Restore and Erase can be undone for 7 days.** The list from before is kept under `medicine-shelf.v1.previous`, with Undo right away and a "Bring back the earlier list" banner for a week.
-- **Backups are checked.** A restored file is checked row by row; damaged entries are skipped and counted, and files from a newer app version are refused.
+- **The same checks for the saved list and for backups** (`cleanList` in `shelf-math.js`). Every person and medicine gets its own id, broken optional fields are fixed, and a refill marked ready with no date goes back to requested. On the phone nothing is dropped: a medicine whose count, schedule, reorder number or person can't be worked out shows a "Needs fixing" card that says what's wrong. A backup file leaves damaged entries out and says how many; files from a newer app version are refused.
+- **Removing a medicine or a person can be undone** right after, from the message at the bottom.
 - **Security policy.** Each page has a Content-Security-Policy that only lets this site's own scripts run and blocks plugins, frames and form posts. GitHub Pages can't send security headers, so protection that only works as a header (such as blocking the app from being shown inside another site's frame) isn't available there.
 
 ## Known limits (tell offices and families)

@@ -385,7 +385,9 @@ details[open] > summary { margin-bottom: 12px; }
     return n;
   };
   const fmt = (n) => (Number.isInteger(n) ? String(n) : (Math.round(n * 10) / 10).toString());
-  const unitFor = (n, unit) => (n === 1 && /s$/.test(unit) ? unit.slice(0, -1) : unit);
+  // Singular form for exactly 1 of a unit ("1 tablet/day"). Listed by hand: "patches" is not "patche".
+  const SINGULAR = { tablets: 'tablet', capsules: 'capsule', patches: 'patch', inhalers: 'inhaler', doses: 'dose' };
+  const unitFor = (n, unit) => (n === 1 && SINGULAR[unit] ? SINGULAR[unit] : unit);
   let toastTimer;
   const fmt1 = (n) => fmt(Math.round(n * 10) / 10);
   function toast(msg, undo) {

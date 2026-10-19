@@ -89,6 +89,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .chip.add { border-style: dashed; color: var(--accent); }
 
 .list { display: grid; gap: 14px; }
+.label:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
 .label { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .label-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 12px 16px 10px; border-bottom: 2px solid var(--accent); }
 .label-head h3 { min-width: 0; overflow-wrap: anywhere; }
@@ -425,7 +426,20 @@ details[open] > summary { margin-bottom: 12px; }
   // ---------- view state ----------
   let view = 'home', filter = 'all', editingMed = null, editingPerson = null, openAction = null;
 
+  // Every change redraws the list, which would drop keyboard focus. Buttons carry a data-key so the
+  // same button (or the form that just opened) gets focus back after the redraw.
+  let focusAfter = null;
   function render() {
+    const active = document.activeElement;
+    const key = focusAfter || (active && active.dataset ? active.dataset.key : null);
+    focusAfter = null;
+    renderNow();
+    if (!key) return;
+    let n = document.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (!n && key.includes(':')) n = document.querySelector(`[data-key="${CSS.escape(key.split(':')[0] + ':card')}"]`);
+    if (n && n !== document.activeElement) n.focus({ preventScroll: true });
+  }
+  function renderNow() {
     $('storageWarn').hidden = storageOK;
     $('exampleBanner').hidden = !state.people.some((p) => p.example);
     const has = state.people.length > 0;
@@ -442,7 +456,7 @@ details[open] > summary { margin-bottom: 12px; }
   function renderChips() {
     const c = $('chips'); c.replaceChildren();
     if (state.people.length === 1) filter = state.people[0].id;
-    const mk = (id, label) => el('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === id), onclick: () => { filter = id; openAction = null; render(); } }, label);
+    const mk = (id, label) => el('button', { class: 'chip', type: 'button', 'data-key': `chip:${id}`, 'aria-pressed': String(filter === id), onclick: () => { filter = id; openAction = null; render(); } }, label);
     if (state.people.length > 1) c.append(mk('all', 'Everyone'));
     for (const p of state.people) c.append(mk(p.id, p.name));
     c.append(el('button', { class: 'chip add', type: 'button', onclick: () => openPersonForm() }, '+ Add person'));
@@ -516,18 +530,18 @@ details[open] > summary { margin-bottom: 12px; }
 
     const wantsOrder = !stage && l.status !== 'ok';
     const actions = el('div', { class: 'actions' },
-      !stage ? el('button', { class: wantsOrder ? 'primary' : '', type: 'button', onclick: () => setStage(m, 'requested') }, 'I requested a refill') : null,
-      stage === 'requested' ? el('button', { class: 'primary', type: 'button', onclick: () => setStage(m, 'ready') }, 'It’s ready for pickup') : null,
-      el('button', { class: wantsOrder || stage === 'requested' ? '' : 'primary', type: 'button', onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
-      el('button', { type: 'button', onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
-      isScheduled(m) && !stage ? el('button', { type: 'button', onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
-      stage ? el('button', { class: 'link', type: 'button', onclick: () => setStage(m, null) }, 'Cancel request') : null,
-      el('button', { class: 'link', type: 'button', onclick: () => openMedForm(m) }, 'Edit'));
+      !stage ? el('button', { class: wantsOrder ? 'primary' : '', type: 'button', 'data-key': `${m.id}:requested`, onclick: () => setStage(m, 'requested') }, 'I requested a refill') : null,
+      stage === 'requested' ? el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:ready`, onclick: () => setStage(m, 'ready') }, 'It’s ready for pickup') : null,
+      el('button', { class: wantsOrder || stage === 'requested' ? '' : 'primary', type: 'button', 'data-key': `${m.id}:refill`, onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
+      el('button', { type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
+      isScheduled(m) && !stage ? el('button', { type: 'button', 'data-key': `${m.id}:calendar`, onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
+      stage ? el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:cancel`, onclick: () => setStage(m, null) }, 'Cancel request') : null,
+      el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'));
 
     const body = el('div', { class: 'label-body' }, facts, progress, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
     const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup' }[l.action];
-    return el('article', { class: 'label' },
+    return el('article', { class: 'label', tabindex: '-1', 'data-key': `${m.id}:card`, 'aria-label': `${m.name}, ${label}` },
       el('div', { class: 'label-head' },
         el('h3', {}, m.name, m.strength ? ` ${m.strength}` : ''),
         el('div', { class: 'actions' }, state.people.length > 1 ? el('span', { class: 'who' }, personName(m.personId)) : null, el('span', { class: 'pill ' + l.status }, label))),
@@ -544,11 +558,16 @@ details[open] > summary { margin-bottom: 12px; }
     const msg = stage === 'requested' ? `Marked ${m.name} as requested.` : stage === 'ready' ? `Marked ${m.name} as ready for pickup.` : `Cancelled the refill request for ${m.name}.`;
     done(msg, () => { m.refill = before; save(); render(); done('Undone.'); });
   }
-  function toggleAction(id, kind) { openAction = openAction && openAction.id === id && openAction.kind === kind ? null : { id, kind }; render(); }
+  function toggleAction(id, kind) {
+    const closing = openAction && openAction.id === id && openAction.kind === kind;
+    openAction = closing ? null : { id, kind };
+    focusAfter = closing ? `${id}:${kind}` : `${id}:qty`;
+    render();
+  }
   function actionForm(m, l, kind) {
     const qid = `act_qty_${m.id}`, did = `act_date_${m.id}`;
     const t = today();
-    const qty = el('input', { id: qid, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : fmt1(l.est) });
+    const qty = el('input', { id: qid, 'data-key': `${m.id}:qty`, type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: kind === 'refill' ? (isScheduled(m) ? Math.round(m.perDay * val(m, 'fillDays')) : '') : fmt1(l.est) });
     const date = el('input', { id: did, type: 'date', value: t, max: t });
     const preview = el('p', { class: 'note', style: 'flex-basis:100%', 'aria-live': 'polite' });
     const updatePreview = () => {
@@ -571,7 +590,7 @@ details[open] > summary { margin-bottom: 12px; }
         Object.assign(m, { onHand: est + q, countedOn: d, verifiedOn: d, lastFillDate: d, lastFillQty: q, confirmedRefill: null, refill: null });
         if (typeof m.refillsLeft === 'number' && !m.controlled) m.refillsLeft = Math.max(0, m.refillsLeft - 1);
       } else Object.assign(m, { onHand: q, countedOn: d, verifiedOn: d });
-      noteChange(); openAction = null; save(); render();
+      noteChange(); openAction = null; focusAfter = `${m.id}:${kind}`; save(); render();
       done(kind === 'refill' ? `Added ${fmt1(q)} to ${m.name}.` : `Saved the count for ${m.name}.`, () => {
         Object.assign(m, before); save(); render(); done(`Undone. ${m.name} is back to how it was.`);
       });
@@ -579,7 +598,7 @@ details[open] > summary { margin-bottom: 12px; }
     return el('div', { class: 'inline' },
       el('label', { for: qid }, kind === 'refill' ? 'How many you picked up' : `How many ${m.unit} you have`, qty),
       el('label', { for: did }, kind === 'refill' ? 'Picked up on' : 'Counted on', date),
-      go, el('button', { type: 'button', onclick: () => { openAction = null; render(); } }, 'Cancel'), preview);
+      go, el('button', { type: 'button', onclick: () => { openAction = null; focusAfter = `${m.id}:${kind}`; render(); } }, 'Cancel'), preview);
   }
 
   function renderTools() {

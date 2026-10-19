@@ -192,6 +192,15 @@ details[open] > summary { margin-bottom: 12px; }
     </div>
   </div>
 
+  <div class="banner noprint" id="previousBanner" hidden>
+    <b id="previousTitle">Changed your mind?</b>
+    <p id="previousText"></p>
+    <div class="actions">
+      <button class="primary" type="button" data-act="bringBack">Bring back the earlier list</button>
+      <button class="link" type="button" data-act="keepNew">Keep things as they are</button>
+    </div>
+  </div>
+
   <div class="banner warn" id="storageWarn" hidden>
     <b>This browser isn't saving anything.</b>
     <p>Private browsing or blocked site data stops the app from keeping your list. Open it in a regular browser window, or add it to your home screen.</p>
@@ -421,6 +430,23 @@ details[open] > summary { margin-bottom: 12px; }
     return lastSaveOk;
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  // Before Restore or Erase replaces everything, the current list is kept under its own key for
+  // a week, so it can be brought back (the banner at the top, or Undo right after).
+  const PREVIOUS_KEY = KEY + '.previous';
+  function keepPrevious(reason) {
+    if (!state.people.length) return;
+    try { localStorage.setItem(PREVIOUS_KEY, JSON.stringify({ savedOn: window.ShelfMath.toStr(new Date()), reason, data: state })); } catch (e) {}
+  }
+  function readPrevious() {
+    try { const p = JSON.parse(localStorage.getItem(PREVIOUS_KEY) || 'null'); return window.ShelfMath.previousOffered(p, window.ShelfMath.toStr(new Date())) ? p : null; }
+    catch (e) { return null; }
+  }
+  function forgetPrevious() { try { localStorage.removeItem(PREVIOUS_KEY); } catch (e) {} }
+  function bringBackPrevious() {
+    const prev = readPrevious(); if (!prev) return;
+    state = migrate(Object.assign(blank(), prev.data), prev.data.version);
+    forgetPrevious(); filter = 'all'; view = 'home'; save(); render(); done('Your earlier list is back.');
+  }
   // Counts real edits since the last backup, so the backup reminder can come back after several changes.
   const noteChange = () => { state.meta.changesSinceBackup = (state.meta.changesSinceBackup || 0) + 1; };
 
@@ -495,6 +521,13 @@ details[open] > summary { margin-bottom: 12px; }
   function renderNow() {
     $('storageWarn').hidden = storageOK;
     $('unreadableWarn').hidden = !unreadable;
+    const prev = unreadable ? null : readPrevious();
+    $('previousBanner').hidden = !prev;
+    if (prev) {
+      const what = prev.reason === 'erase' ? 'erased everything' : 'restored a backup';
+      const until = nice(addDays(prev.savedOn, SM.UNDO_DAYS));
+      $('previousText').textContent = `On ${nice(prev.savedOn)} you ${what}. The list from before (${prev.data.people.map((p) => p.name).join(', ')}) can be brought back until ${until}.`;
+    }
     $('exampleBanner').hidden = !state.people.some((p) => p.example);
     const has = state.people.length > 0;
     $('welcome').hidden = has || view !== 'home';
@@ -868,8 +901,9 @@ details[open] > summary { margin-bottom: 12px; }
         const fileDate = String(j.exportedAt || '').slice(0, 10);
         const meta = Object.assign({}, j.data.meta, { lastBackup: SM.isDateStr(fileDate) ? fileDate : null, changesSinceBackup: 0 });
         unreadable = null; // a restored backup replaces the damaged list; the damaged copy stays under its own key
+        keepPrevious('restore');
         state = Object.assign(blank(), j.data, { people: clean.people, meds: clean.meds, meta });
-        filter = 'all'; view = 'home'; save(); render(); done('Backup restored.');
+        filter = 'all'; view = 'home'; save(); render(); done('Backup restored.', readPrevious() ? bringBackPrevious : null);
       } catch (err) { toast("That file isn't a Medicine Shelf backup."); }
     };
     r.readAsText(f);
@@ -955,6 +989,11 @@ details[open] > summary { margin-bottom: 12px; }
     else if (act === 'print') window.print();
     else if (act === 'calendarAll') addToCalendar(state.meds.filter((m) => filter === 'all' || m.personId === filter));
     else if (act === 'backup') backup();
+    else if (act === 'bringBack') {
+      if (!confirm('Replace the current list with the earlier one?')) return;
+      bringBackPrevious();
+    }
+    else if (act === 'keepNew') { forgetPrevious(); render(); }
     else if (act === 'saveUnreadable') {
       let text = unreadable;
       try { const k = JSON.parse(localStorage.getItem(UNREADABLE_KEY) || 'null'); if (k && k.text) text = k.text; } catch (err) {}
@@ -980,8 +1019,9 @@ details[open] > summary { margin-bottom: 12px; }
       applyBig(on); try { localStorage.setItem(BIG, on ? '1' : '0'); } catch (err) {}
     }
     else if (act === 'erase') {
-      if (!confirm('Erase every person and medicine on this device? Save a backup first if you might want them back.')) return;
-      state = blank(); filter = 'all'; save(); render(); done('Everything on this device was erased.');
+      if (!confirm('Erase every person and medicine on this device? You can bring the list back for 7 days; after that it is gone unless you saved a backup.')) return;
+      keepPrevious('erase');
+      state = blank(); filter = 'all'; save(); render(); done('Everything on this device was erased.', readPrevious() ? bringBackPrevious : null);
     }
   });
 

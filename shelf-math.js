@@ -113,7 +113,14 @@
     return { ok: false };
   }
 
-  const api = { parseSaved, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
+  // The list from before a Restore or Erase is kept for this many days so it can be brought back.
+  const UNDO_DAYS = 7;
+  function previousOffered(prev, t) {
+    return !!(prev && isDateStr(prev.savedOn) && prev.data && Array.isArray(prev.data.people) && prev.data.people.length
+      && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
+  }
+
+  const api = { parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, isDateStr, isCount, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

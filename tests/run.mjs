@@ -169,5 +169,15 @@ test('saved list that cannot be read is reported, not silently replaced', () => 
   }
 });
 
+test('list from before a restore or erase is offered back for 7 days only', () => {
+  const prev = { savedOn: '2026-10-19', reason: 'erase', data: { people: [{ id: 'p', name: 'Sam' }], meds: [] } };
+  assert.equal(SM.previousOffered(prev, '2026-10-19'), true);
+  assert.equal(SM.previousOffered(prev, '2026-10-26'), true);   // day 7
+  assert.equal(SM.previousOffered(prev, '2026-10-27'), false);  // day 8
+  assert.equal(SM.previousOffered({ ...prev, data: { people: [], meds: [] } }, '2026-10-20'), false); // nothing to bring back
+  assert.equal(SM.previousOffered({ ...prev, savedOn: 'soon' }, '2026-10-20'), false);
+  assert.equal(SM.previousOffered(null, '2026-10-20'), false);
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

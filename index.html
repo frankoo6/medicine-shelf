@@ -607,7 +607,7 @@ details[open] > summary { margin-bottom: 12px; }
 
   function renderTools() {
     const last = state.meta.lastBackup;
-    $('backupInfo').textContent = last ? `Last backup saved ${nice(last)}.` : 'No backup saved yet.';
+    $('backupInfo').textContent = (last ? `Last backup saved ${nice(last)}. ` : 'No backup saved yet. ') + 'A backup file lists your medicines, prescribers and Rx numbers in plain text: keep it somewhere private.';
   }
 
   // ---------- people ----------
@@ -761,7 +761,7 @@ details[open] > summary { margin-bottom: 12px; }
         await navigator.share({ files: [file], title: 'Medicine Shelf backup' });
       } else downloadFile(name, text, 'application/json');
     } catch (e) { if (e && e.name === 'AbortError') return; downloadFile(name, text, 'application/json'); }
-    state.meta.lastBackup = today(); state.meta.changesSinceBackup = 0; save(); render(); toast('Backup saved. Keep it somewhere safe, like your email or cloud storage.');
+    state.meta.lastBackup = today(); state.meta.changesSinceBackup = 0; save(); render(); toast('Backup saved. The file lists your medicines in plain text, so keep it somewhere private.');
   }
   const onRestore = (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;

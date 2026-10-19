@@ -14,6 +14,9 @@
   const val = (m, k) => (m[k] ?? DEFAULTS[k]);
   const isScheduled = (m) => !m.prn && m.perDay > 0;
   const needsScript = (m) => !!m.controlled || m.refillsLeft === 0;
+  // A real calendar date written as YYYY-MM-DD (rejects 2026-02-30, '', undefined).
+  const isDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && toStr(parse(s)) === s;
+  const isCount = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 
   // Dates that follow from the last count. Does not depend on today.
   function plan(m) {
@@ -22,7 +25,12 @@
     out.runOut = addDays(m.countedOn, Math.floor(m.onHand / m.perDay));
     out.orderBy = addDays(out.runOut, -(val(m, 'leadDays') + val(m, 'bufferDays')));
     if (m.confirmedRefill) { out.eligible = m.confirmedRefill; out.eligibleConfirmed = true; }
-    else if (m.lastFillDate) out.eligible = addDays(m.lastFillDate, Math.ceil(val(m, 'fillDays') * val(m, 'eligiblePct') / 100));
+    else if (m.lastFillDate) {
+      // Insurance counts the days' supply of the last fill. If we know how many were picked up, use that
+      // (a partial fill is fewer days); otherwise assume a full fill of fillDays.
+      const supplyDays = isCount(m.lastFillQty) && m.lastFillQty > 0 ? m.lastFillQty / m.perDay : val(m, 'fillDays');
+      out.eligible = addDays(m.lastFillDate, Math.ceil(supplyDays * val(m, 'eligiblePct') / 100));
+    }
     if (out.eligible) out.tight = out.eligible > addDays(out.runOut, -val(m, 'leadDays'));
     out.orderOn = maxDate(out.orderBy, out.eligible);
     if (out.needsScript) out.callDoctor = addDays(out.orderOn, -SCRIPT_LEAD_DAYS);
@@ -67,9 +75,6 @@
   }
 
   // ---- Checking data that comes from a backup file ----
-  // A real calendar date written as YYYY-MM-DD (rejects 2026-02-30, '', undefined).
-  const isDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && toStr(parse(s)) === s;
-  const isCount = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 
   // Keeps the people and medicines a backup can safely load, fixes optional fields that are
   // broken, and reports how many rows it had to skip. Never throws on bad rows.

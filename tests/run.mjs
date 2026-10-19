@@ -154,5 +154,12 @@ test('date check rejects impossible and badly written dates', () => {
   for (const bad of ['2026-02-30', '2026-13-01', '10/19/2026', '', null, undefined, 20261019]) assert.equal(SM.isDateStr(bad), false, String(bad));
 });
 
+test('partial fill: insurance estimate uses the amount actually picked up', () => {
+  const base = { perDay: 2, onHand: 60, countedOn: '2026-10-01', lastFillDate: '2026-10-01', fillDays: 90 };
+  assert.equal(SM.plan(base).eligible, '2026-12-08');                       // full 90 days x 75% = 68 days
+  assert.equal(SM.plan({ ...base, lastFillQty: 60 }).eligible, '2026-10-24'); // 60 tablets = 30 days x 75% = 23 days
+  assert.equal(SM.plan({ ...base, lastFillQty: 180 }).eligible, '2026-12-08'); // a full fill gives the same answer
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

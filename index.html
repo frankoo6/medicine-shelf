@@ -219,7 +219,7 @@ details[open] > summary { margin-bottom: 12px; }
 
   <!-- First run -->
   <section class="welcome" id="welcome" hidden>
-    <h1>Never run out of a medicine again</h1>
+    <h1>Stay ahead of medicine refills</h1>
     <ul class="points">
       <li>Counts down each medicine from the number you have and how many are taken a day.</li>
       <li>Tells you the day to reorder, with time for the pharmacy and insurance limits built in.</li>
@@ -246,7 +246,7 @@ details[open] > summary { margin-bottom: 12px; }
     <div class="chips noprint" id="chips" role="group" aria-label="Show medicines for"></div>
 
     <section class="summary" aria-label="Summary" id="summary">
-      <div class="tally now"><span class="eyebrow">Order now</span><b id="cNow">0</b></div>
+      <div class="tally now"><span class="eyebrow">Needs attention</span><b id="cNow">0</b></div>
       <div class="tally soon"><span class="eyebrow">Within 2 weeks</span><b id="cSoon">0</b></div>
       <div class="tally ok"><span class="eyebrow">Stocked</span><b id="cOk">0</b></div>
     </section>
@@ -289,7 +289,7 @@ details[open] > summary { margin-bottom: 12px; }
           <select id="f_unit"><option>tablets</option><option>capsules</option><option>mL</option><option>patches</option><option>inhalers</option><option>doses</option></select></label>
         <label class="field" for="f_perDay"><span>How many a day</span><input id="f_perDay" type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2"></label>
         <label class="check" for="f_prn" style="align-self:end"><input id="f_prn" type="checkbox"> Taken only as needed</label>
-        <label class="field" for="f_min" id="minWrap" hidden><span>Reorder when fewer than</span><input id="f_min" type="number" min="0" inputmode="numeric" placeholder="e.g. 10"></label>
+        <label class="field" for="f_min" id="minWrap" hidden><span>Reorder when you’re down to</span><input id="f_min" type="number" min="0" inputmode="numeric" placeholder="e.g. 10"></label>
         <label class="field" for="f_onHand" id="onHandWrap"><span>How many you have right now</span><input id="f_onHand" type="number" min="0" step="any" inputmode="decimal" required></label>
         <label class="field" for="f_countedOn" id="countedOnWrap"><span>Date counted</span><input id="f_countedOn" type="date" required></label>
         <p class="note" id="countNote" hidden style="align-self:end">The count isn't changed here. To change it, use Recount or Picked up a refill on the card.</p>
@@ -358,7 +358,7 @@ details[open] > summary { margin-bottom: 12px; }
           <p><b>Order on</b> is the day you'd run out, minus the days your pharmacy needs and a few extra days to be safe. It is never earlier than the day insurance is likely to allow the refill. That day is an estimate based on when you last picked it up, unless you enter the date the pharmacy gave you.</p>
           <p>Medicines that need a new prescription each fill (or have no refills left) show <b>Contact prescriber</b> a week before the order date, so the office has time to send it.</p>
           <p><b>I requested a refill</b> and <b>It’s ready for pickup</b> record where a refill stands, so you can see whether you already called it in. The count only goes up when you tap <b>Picked up a refill</b>, and the card stays urgent if the supply is about to run out.</p>
-          <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count falls below the number you choose.</p>
+          <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count is at or below the number you choose.</p>
         </div>
       </details>
       <details>

@@ -215,7 +215,7 @@
     if (isScheduled(m)) {
       facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Estimated left', `≈ ${fmt(l.est)}`));
     } else {
-      facts.append(fact('Last count', fmt(l.est), true), fact('Reorder below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
+      facts.append(fact('Last count', fmt(l.est), true), fact('Reorder at or below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
     }
     const warns = [];
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
@@ -438,7 +438,7 @@
     if (!editingMed && neg('onHand')) return void bad('onHand', "How many you have can't be negative.");
     if (prn && neg('min')) return void bad('min', "The reorder number can't be negative.");
     // Without a reorder number an as-needed medicine could never show 'Order now'.
-    if (prn && numOrNull(F('min').value) == null) return void bad('min', 'Enter how many to reorder below, so the app can tell you when to reorder.');
+    if (prn && numOrNull(F('min').value) == null) return void bad('min', 'Enter the number to reorder at, so the app can tell you when to reorder.');
     const refills = numOrNull(F('refills').value);
     if (refills != null && !(Number.isInteger(refills) && refills >= 0)) return void bad('refills', 'Refills left should be a whole number, 0 or more.');
     if (neg('lead')) return void bad('lead', "Days the pharmacy needs can't be negative.");

@@ -177,6 +177,11 @@ details[open] > summary { margin-bottom: 12px; }
     <button class="primary" id="addMedTop" type="button" hidden>Add a medicine</button>
   </header>
 
+  <div class="banner noprint" id="updateBanner" hidden role="status">
+    <b>A new version of Medicine Shelf is ready</b>
+    <div class="actions"><button class="primary" type="button" onclick="location.reload()">Reload now</button></div>
+  </div>
+
   <div class="banner warn" id="storageWarn" hidden>
     <b>This browser isn't saving anything.</b>
     <p>Private browsing or blocked site data stops the app from keeping your list. Open it in a regular browser window, or add it to your home screen.</p>
@@ -968,7 +973,14 @@ details[open] > summary { margin-bottom: 12px; }
 
   // ---------- offline ----------
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // When a new version takes over while the app is open, say so and offer a reload
+    // (not automatic, so nothing half-typed is lost). Not shown on the very first install.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('updateBanner').hidden = false; });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Check for a new version whenever the app comes back to the front.
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
   }
 
   // Refresh "days left" when the app comes back to the front on a new day.

@@ -40,13 +40,45 @@
     return blank();
   }
   let state = load();
-  let lastSaveOk = true;
+  // ---- More than one window ----
+  // The app can be open twice (two browser tabs, or a browser tab and the home-screen app). Each save
+  // writes the whole list, so an older window could overwrite a change made in a newer one. Every save
+  // raises a revision number (meta.rev). A window only saves on top of the revision it last saw; if
+  // another window has saved since, it loads the newer list instead and says the change wasn't saved.
+  let seenRev = state.meta.rev || 0;
+  const storedRev = () => {
+    try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); return (d && d.meta && d.meta.rev) || 0; }
+    catch (e) { return 0; }
+  };
+  let lastSaveOk = true, saveConflict = false;
   function save() {
+    saveConflict = false;
     if (unreadable) { lastSaveOk = false; return false; } // never overwrite a list we couldn't read
-    try { localStorage.setItem(KEY, JSON.stringify(state)); lastSaveOk = true; }
-    catch (e) { storageOK = false; lastSaveOk = false; $('storageWarn').hidden = false; }
+    if (storageOK && storedRev() > seenRev) {
+      saveConflict = true; lastSaveOk = false;
+      reloadFromStorage('Not saved: this list was changed in another window. The latest list is shown now, so please make that change again.');
+      return false;
+    }
+    try {
+      state.meta.rev = seenRev + 1;
+      localStorage.setItem(KEY, JSON.stringify(state));
+      seenRev = state.meta.rev; lastSaveOk = true;
+    } catch (e) { storageOK = false; lastSaveOk = false; $('storageWarn').hidden = false; }
     return lastSaveOk;
   }
+  // Loads the list another window saved, closes anything half-done here (it was based on the old list),
+  // and says what happened.
+  function reloadFromStorage(message) {
+    state = load(); seenRev = state.meta.rev || 0;
+    openAction = null; editingMed = null; editingPerson = null;
+    for (const id of ['medForm', 'personForm']) { const f = document.getElementById(id); if (f) f.hidden = true; }
+    render(); toast(message);
+  }
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || e.storageArea !== localStorage) return;
+    if ((state.meta.rev || 0) === storedRev() && e.newValue === JSON.stringify(state)) return;
+    reloadFromStorage('Updated with changes made in another window.');
+  });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   // Before Restore or Erase replaces everything, the current list is kept under its own key for
   // a week, so it can be brought back (the banner at the top, or Undo right after).
@@ -101,6 +133,7 @@
   let toastTimer;
   // Use after save(): shows the success message only if the save worked.
   function done(msg, undo, extra) {
+    if (saveConflict) return; // save() already explained that the change wasn't saved
     if (unreadable) toast('Not saved. Your saved list couldn’t be read: restore a backup or start a new list first (see the message at the top).');
     else if (lastSaveOk) toast(msg, undo, extra);
     else toast("Couldn't save. This browser isn't keeping data, so the change will be lost when you close it.");

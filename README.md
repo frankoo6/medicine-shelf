@@ -9,7 +9,7 @@ A free, private web app that families install on their phones to track how much 
 | `index.html` | The app's page and styles |
 | `app.js` | Everything the app does (kept out of the page so the security policy can block any other script) |
 | `shelf-math.js` | The date and supply math, kept separate so it can be tested |
-| `tests/run.mjs` | Tests for the math, refills, decimals, the shared data checks, damaged-data handling, the undo window and expiry: `TZ=America/New_York node tests/run.mjs` (no installs needed) |
+| `tests/run.mjs` | Tests for the math, refills, decimals, the shared data checks, damaged-data handling, the undo window, expiry, recount reminders and the "Needs doing today" list: `TZ=America/New_York node tests/run.mjs` (no installs needed) |
 | `manifest.webmanifest`, `icon-*.png`, `apple-touch-icon.png` | Let phones install it to the home screen with its own icon |
 | `sw.js` | Lets the app open with no internet |
 | `flyer.html` + `flyer.js` + `qrcode.js` | Printable one-page flyer with a QR code that points to wherever you host the app |
@@ -40,6 +40,7 @@ Families' data is not affected by updates. It lives in their browser under the k
 - **Restore and Erase can be undone for 7 days.** The list from before is kept under `medicine-shelf.v1.previous`, with Undo right away and a "Bring back the earlier list" banner for a week.
 - **The same checks for the saved list and for backups** (`cleanList` in `shelf-math.js`). Every person and medicine gets its own id, broken optional fields are fixed, and a refill marked ready with no date goes back to requested. On the phone nothing is dropped: a medicine whose count, schedule, reorder number or person can't be worked out shows a "Needs fixing" card that says what's wrong. A backup file leaves damaged entries out and says how many; files from a newer app version are refused.
 - **Removing a medicine or a person can be undone** right after, from the message at the bottom.
+- **Two windows can't overwrite each other.** Every save raises a revision number (`meta.rev`). If the list was changed in another tab or window, the older window refuses its own save, shows the latest list and asks the person to make the change again. Open windows also refresh when another one saves.
 - **Security policy.** Each page has a Content-Security-Policy that only lets this site's own scripts run and blocks plugins, frames and form posts. GitHub Pages can't send security headers, so protection that only works as a header (such as blocking the app from being shown inside another site's frame) isn't available there.
 
 ## Known limits (tell offices and families)
@@ -49,9 +50,10 @@ Families' data is not affected by updates. It lives in their browser under the k
 - **No sync.** Two caregivers on two phones keep separate lists. Tools → "Using the list on two phones" walks through copying a list to another phone with a backup file; after that, changes don't flow between them. There is deliberately no account or server, so nothing leaves the phone.
 - **Calendar reminders are one-time files.** "Add to calendar" makes a calendar file for the current order date. After a refill the date moves, so add it again. Each medicine keeps the same event id, so calendars that follow the standard (Apple Calendar, Outlook) replace the old reminder; Google Calendar's file import may add a second one, which you delete by hand. After a refill, the app offers "Update calendar" for medicines already on the calendar. Apple Calendar keeps the 9 a.m. alert in the file; Google Calendar on Android may ignore it and use its own default alert for all-day events.
 - **Printing from the home-screen app** works on most phones but varies by model. If the Print button does nothing, open the same link in the regular browser and print from there.
-- **Dates are estimates.** Insurance refill rules vary; the default assumes a refill is allowed after 75% of the last fill is used. Users can change this per medicine, or enter the next refill date their pharmacy gave them, which replaces the estimate until the next pickup.
-- **Expiry dates are optional and typed in by hand.** The app warns 30 days ahead and adds a calendar reminder two weeks ahead, but only if the date was entered.
-- **Exports are copies.** Backup files, calendar entries and printed lists contain medicine names and dates. They are outside the app's protection once made.
+- **Dates are estimates.** Days left and the run-out date assume every dose is taken as scheduled, so missed or extra doses make them drift. Each card says when it was last counted by hand, and after 90 days (changeable per medicine under Timing, 7 to 365) the card and the "Needs doing today" list ask for a recount. Insurance refill rules vary; the default assumes a refill is allowed after 75% of the last fill is used. Users can change this per medicine, or enter the next refill date their pharmacy gave them, which replaces the estimate until the next pickup.
+- **Expiry dates are optional and typed in by hand.** The app warns 30 days ahead and adds a calendar reminder two weeks ahead, but only if the date was entered. It tracks one date per medicine, not one per package.
+- **Daily schedules only.** "How many a day" can be a fraction (0.5 for every other day), but weekly or alternating doses aren't modeled yet; enter the average a day.
+- **Exports are copies.** Backup files, calendar entries and printed lists contain medicine names and dates. They are outside the app's protection once made. Tools → "Keep calendar reminders private" (a setting on each phone) makes calendar entries say only "Check medicine supply", with no names, pharmacy or Rx numbers; reminders already added keep their old wording until they're added again.
 
 ## Before a doctor's office hands it out
 

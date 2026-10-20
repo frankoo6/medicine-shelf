@@ -230,6 +230,7 @@
         el('p', { class: 'note' }, 'Grab the bottle. Enter the name, how many are taken a day and how many are in it right now. The app works out the rest.'),
         el('button', { class: 'primary', type: 'button', onclick: () => openMedForm() }, 'Add a medicine')));
     }
+    renderToday(inView, brokenInView);
     for (const { m, why } of brokenInView) list.append(brokenCard(m, why));
     for (const { m, l } of inView) {
       try { list.append(card(m, l)); } catch (e) { list.append(brokenCard(m, 'count')); }
@@ -242,15 +243,48 @@
     $('backupNudge').hidden = !!pending || !(realMeds >= 1 && (!last || diff(last, today()) > 60 || changedSince));
   }
 
+  // "Needs doing today": one line per thing to do for whoever is shown. Tapping a line goes to that card.
+  function renderToday(rows, broken) {
+    const t = today(), items = SM.todoList(rows, broken, t);
+    const byId = new Map(state.meds.map((m) => [m.id, m]));
+    const showWho = filter === 'all' && state.people.length > 1;
+    const ul = $('todayList'); ul.replaceChildren();
+    for (const it of items) {
+      const m = byId.get(it.id); if (!m) continue;
+      const name = typeof m.name === 'string' && m.name.trim() ? m.name : 'a medicine';
+      const who = showWho ? ` for ${personName(m.personId)}` : '';
+      const text = {
+        order: `Call the pharmacy to reorder ${name}${who}`,
+        script: `Contact the prescriber's office for a new ${name} prescription${who}`,
+        check: it.days >= SM.STALE_REQUEST_DAYS ? `Check on the ${name} refill${who}: requested ${it.days} days ago` : `Make sure the ${name} refill${who} arrives in time`,
+        pickup: `Pick up ${name}${who}: ready at the pharmacy`,
+        fix: `Fix the saved details for ${name}${who}`,
+        expired: `Replace expired ${name}${who}`,
+        recount: `Recount ${name}${who}: last counted by hand ${SM.agoText(SM.lastCounted(m), t)}`,
+      }[it.kind];
+      const hard = ['order', 'script', 'fix', 'expired'].includes(it.kind) || (it.kind === 'check' && it.days < SM.STALE_REQUEST_DAYS);
+      ul.append(el('li', { class: hard ? 'hard' : '' }, el('button', { type: 'button', 'data-key': `today:${it.kind}:${it.id}`, onclick: () => goToCard(it.id) }, text)));
+    }
+    $('todayNone').hidden = items.length > 0;
+  }
+  function goToCard(id) {
+    const n = document.querySelector(`[data-key="${CSS.escape(id + ':card')}"]`); if (!n) return;
+    scrollTo(n); n.focus({ preventScroll: true });
+  }
+
   function card(m, l) {
     const t = today(), p = l.p;
     const facts = el('div', { class: 'facts' });
     const fact = (label, value, big) => el('div', { class: 'fact' + (big ? ' big' : '') }, el('span', { class: 'eyebrow' }, label), el('span', { class: 'v' }, value));
     if (isScheduled(m)) {
-      facts.append(fact('Days left', l.daysLeft, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', nice(p.runOut)), fact('Estimated left', `≈ ${fmt(l.est)}`));
+      facts.append(fact('Days left', `≈ ${l.daysLeft}`, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', `≈ ${nice(p.runOut)}`), fact('Estimated left', `≈ ${fmt(l.est)}`));
     } else {
-      facts.append(fact('Last count', fmt(l.est), true), fact('Reorder at or below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', nice(m.countedOn)));
+      const ago = SM.agoText(m.countedOn, t);
+      facts.append(fact('Last count', fmt(l.est), true), fact('Reorder at or below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', ago[0].toUpperCase() + ago.slice(1)));
     }
+    // Scheduled cards are estimates from the last hand count; say how old that count is.
+    const rc = SM.recountDue(m, t);
+    const basis = rc && !rc.due ? el('p', { class: 'note basis' }, `Estimates. Last counted by hand ${nice(rc.since)} (${SM.agoText(rc.since, t)}).`) : null;
     const warns = [];
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
       ? `The pharmacy's next refill date is ${nice(p.eligible)}, but it runs out about ${nice(p.runOut)}. Call the pharmacy or prescriber now.`
@@ -272,7 +306,7 @@
     if (l.expiresIn != null && l.expiresIn < 0) warns.push(el('div', { class: 'warn-line hard' }, `Expired on ${nice(m.expiresOn)}. Ask your pharmacy about a replacement.`));
     else if (l.expiresIn != null && l.expiresIn <= SM.EXPIRY_SOON_DAYS) warns.push(el('div', { class: 'warn-line' }, `Expires ${nice(m.expiresOn)}, in ${l.expiresIn} day${l.expiresIn === 1 ? '' : 's'}.`));
     else if (l.expiresBeforeRunOut) warns.push(el('div', { class: 'warn-line' }, `Expires ${nice(m.expiresOn)}, before you'd finish this supply (about ${nice(p.runOut)}).`));
-    if (isScheduled(m) && diff(m.verifiedOn ?? m.countedOn, t) > 120) warns.push(el('div', { class: 'warn-line' }, `Last counted ${nice(m.verifiedOn ?? m.countedOn)}. A quick recount keeps the dates right.`));
+    if (rc && rc.due) warns.push(el('div', { class: 'warn-line' }, `Last counted by hand ${nice(rc.since)} (${SM.agoText(rc.since, t)}). Missed or extra doses add up, so a quick recount keeps the dates right.`));
 
     const meta = el('div', { class: 'meta' },
       isScheduled(m) ? el('span', {}, `${fmt(m.perDay)} ${unitFor(m.perDay, m.unit)}/day`) : null,
@@ -299,7 +333,7 @@
       stage ? el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:cancel`, onclick: () => setStage(m, null) }, 'Cancel request') : null,
       el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'));
 
-    const body = el('div', { class: 'label-body' }, facts, progress, warns, meta, actions);
+    const body = el('div', { class: 'label-body' }, facts, basis, progress, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
     const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup', expired: 'Expired', expiring: 'Expires soon' }[l.action];
     return el('article', { class: 'label', tabindex: '-1', 'data-key': `${m.id}:card`, 'aria-label': `${m.name}, ${label}` },
@@ -465,7 +499,7 @@
     F('fillDays').value = String(val(m || {}, 'fillDays')); F('refills').value = m?.refillsLeft ?? '';
     F('controlled').checked = !!m?.controlled; F('prescriber').value = m?.prescriber || ''; F('pharmacy').value = m?.pharmacy || '';
     F('pharmacyPhone').value = m?.pharmacyPhone || ''; F('rx').value = m?.rxNumber || ''; F('expires').value = m?.expiresOn || '';
-    F('lead').value = val(m || {}, 'leadDays'); F('buffer').value = val(m || {}, 'bufferDays'); F('pct').value = val(m || {}, 'eligiblePct');
+    F('lead').value = val(m || {}, 'leadDays'); F('buffer').value = val(m || {}, 'bufferDays'); F('pct').value = val(m || {}, 'eligiblePct'); F('recount').value = val(m || {}, 'recountDays');
     $('medDelete').hidden = !m;
     $('personForm').hidden = true; $('medForm').hidden = false; scrollTo($('medForm')); F('name').focus({ preventScroll: true });
   }
@@ -494,6 +528,8 @@
     if (neg('buffer')) return void bad('buffer', "Extra days can't be negative.");
     const pct = numOrNull(F('pct').value);
     if (pct != null && !(pct >= 50 && pct <= 100)) return void bad('pct', 'The insurance percent should be between 50 and 100.');
+    const recount = numOrNull(F('recount').value);
+    if (recount != null && !(Number.isInteger(recount) && recount >= SM.RECOUNT_MIN && recount <= SM.RECOUNT_MAX)) return void bad('recount', `The recount reminder should be a whole number of days from ${SM.RECOUNT_MIN} to ${SM.RECOUNT_MAX}.`);
     if (F('lastFill').value && F('lastFill').value > today()) return void bad('lastFill', "The last pickup date can't be in the future.");
     if (F('lastFill').value && F('confirmed').value && F('confirmed').value < F('lastFill').value) return void bad('confirmed', 'The next refill date should be after the last pickup.');
     const prev = state.meds.find((x) => x.id === editingMed);
@@ -518,7 +554,7 @@
       controlled: F('controlled').checked, prescriber: F('prescriber').value.trim(), pharmacy: F('pharmacy').value.trim(),
       pharmacyPhone: F('pharmacyPhone').value.trim(), rxNumber: F('rx').value.trim(), expiresOn: F('expires').value || null,
       leadDays: numOrNull(F('lead').value) ?? DEFAULTS.leadDays, bufferDays: numOrNull(F('buffer').value) ?? DEFAULTS.bufferDays,
-      eligiblePct: numOrNull(F('pct').value) ?? DEFAULTS.eligiblePct,
+      eligiblePct: numOrNull(F('pct').value) ?? DEFAULTS.eligiblePct, recountDays: recount ?? DEFAULTS.recountDays,
     });
     if (!prev) state.meds.push(m);
     noteChange(); save(); $('medForm').hidden = true; filter = state.people.length > 1 && filter === 'all' ? 'all' : m.personId; render();
@@ -542,19 +578,27 @@
       `SUMMARY:${esc(summary)}`, `DESCRIPTION:${esc(description)}`, 'TRANSP:TRANSPARENT',
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(summary)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT'];
   }
+  // Private reminders (a per-device setting): calendars are often shared or show on a lock screen, so the
+  // events say only "Check medicine supply" and leave out names, pharmacy and Rx numbers.
+  const PRIVATE_CAL = KEY + '.privateCal';
+  const privateCal = () => { try { return localStorage.getItem(PRIVATE_CAL) === '1'; } catch (e) { return false; } };
+  const PRIVATE_NOTE = 'Open Medicine Shelf to see the details.';
   function buildIcs(meds) {
+    const priv = privateCal();
     const t = today(), lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Medicine Shelf//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
     for (const m of meds) {
       let p; try { p = plan(m); } catch (e) { continue; } // skip a medicine with damaged data
       const who = personName(m.personId);
       // Expiry reminder two weeks ahead (or today if that's already passed), with its own stable id.
       if (SM.isDateStr(m.expiresOn) && m.expiresOn >= t) {
-        lines.push(...vevent(`${m.id}-expiry`, maxDate(addDays(m.expiresOn, -14), t), `Replace ${m.name} for ${who}: expires ${nice(m.expiresOn)}`, 'Ask your pharmacy about a replacement before it expires.'));
+        lines.push(...vevent(`${m.id}-expiry`, maxDate(addDays(m.expiresOn, -14), t),
+          priv ? 'Medicine Shelf: replace a medicine' : `Replace ${m.name} for ${who}: expires ${nice(m.expiresOn)}`,
+          priv ? PRIVATE_NOTE : 'Ask your pharmacy about a replacement before it expires.'));
       }
       if (!p.orderOn) continue;
       const details = [`Runs out about ${nice(p.runOut)}.`, m.pharmacy && `Pharmacy: ${m.pharmacy}`, m.pharmacyPhone && `Phone: ${m.pharmacyPhone}`, m.rxNumber && `Rx: ${m.rxNumber}`].filter(Boolean).join('\n');
-      lines.push(...vevent(`${m.id}-order`, maxDate(p.orderOn, t), `Order ${m.name} for ${who}`, details));
-      if (p.needsScript) lines.push(...vevent(`${m.id}-script`, maxDate(p.callDoctor, t), `Ask for a new ${m.name} prescription for ${who}`, `Order date is ${nice(p.orderOn)}.`));
+      lines.push(...vevent(`${m.id}-order`, maxDate(p.orderOn, t), priv ? 'Check medicine supply' : `Order ${m.name} for ${who}`, priv ? PRIVATE_NOTE : details));
+      if (p.needsScript) lines.push(...vevent(`${m.id}-script`, maxDate(p.callDoctor, t), priv ? 'Medicine Shelf: contact prescriber' : `Ask for a new ${m.name} prescription for ${who}`, priv ? PRIVATE_NOTE : `Order date is ${nice(p.orderOn)}.`));
     }
     lines.push('END:VCALENDAR');
     return lines.map(fold).join('\r\n') + '\r\n';
@@ -562,7 +606,9 @@
   function addToCalendar(meds) {
     const sched = meds.filter((m) => isScheduled(m) || SM.isDateStr(m.expiresOn));
     if (!sched.length) return toast('No order or expiry dates to add yet.');
-    downloadFile(sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics', buildIcs(sched), 'text/calendar');
+    const fileName = privateCal() ? 'medicine-reminder.ics'
+      : sched.length === 1 ? `order-${sched[0].name.replace(/[^\w-]+/g, '-').toLowerCase()}.ics` : 'medicine-order-dates.ics';
+    downloadFile(fileName, buildIcs(sched), 'text/calendar');
     // Remember which medicines are on the calendar, so a refill can offer to update the reminder.
     for (const m of sched) m.calendarOn = today();
     save();
@@ -642,6 +688,12 @@
     document.querySelectorAll('[data-act="bigtext"]').forEach((b) => (b.textContent = on ? 'Make the text normal size' : 'Make the text larger'));
   }
   try { applyBig(localStorage.getItem(BIG) === '1'); } catch (e) {}
+  // Private calendar reminders: also per device (see buildIcs).
+  $('privateCal').checked = privateCal();
+  $('privateCal').addEventListener('change', (e) => {
+    try { localStorage.setItem(PRIVATE_CAL, e.target.checked ? '1' : '0'); } catch (err) { /* storage blocked: the box resets on reload */ }
+    toast(e.target.checked ? 'Calendar reminders will say "Check medicine supply", with no names or Rx numbers. Reminders already in your calendar keep their old wording until you add them again.' : 'Calendar reminders will include medicine names and pharmacy details again.');
+  });
 
   // ---------- medication list for appointments ----------
   // The printable medication list for one person, as a list of nodes.

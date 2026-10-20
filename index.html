@@ -109,6 +109,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .warn-line { border-left: 4px solid var(--soon); background: var(--soon-soft); padding: 9px 12px; border-radius: 6px; font-size: .95rem; }
 .warn-line.hard { border-color: var(--now); background: var(--now-soft); }
+.today { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 8px; }
+.today h2 { font-size: 1.05rem; margin: 0; }
+.today ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.today li button { width: 100%; justify-content: flex-start; text-align: left; border-left: 4px solid var(--soon); background: var(--soon-soft); color: var(--ink); font-weight: 500; }
+.today li.hard button { border-left-color: var(--now); background: var(--now-soft); }
+.basis { font-size: .88rem; }
 .meta { color: var(--muted); font-size: .9rem; display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .inline { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; background: var(--accent-soft); padding: 12px; border-radius: 10px; }
@@ -251,6 +257,12 @@ details[open] > summary { margin-bottom: 12px; }
       <div class="tally ok"><span class="eyebrow">Stocked</span><b id="cOk">0</b></div>
     </section>
 
+    <section class="today noprint" id="today" aria-labelledby="todayH">
+      <h2 id="todayH">Needs doing today</h2>
+      <ul id="todayList"></ul>
+      <p class="note" id="todayNone" hidden>Nothing needs doing today.</p>
+    </section>
+
     <div class="banner" id="backupConfirm" hidden>
       <b>Did you keep the backup file?</b>
       <p>It only helps if it's somewhere you can find it later, like your email, Files app or a cloud drive.</p>
@@ -317,6 +329,7 @@ details[open] > summary { margin-bottom: 12px; }
           <label class="field" for="f_lead"><span>Days the pharmacy needs</span><input id="f_lead" type="number" min="0" inputmode="numeric"></label>
           <label class="field" for="f_buffer"><span>Extra days to be safe</span><input id="f_buffer" type="number" min="0" inputmode="numeric"></label>
           <label class="field" for="f_pct"><span>Insurance allows a refill after</span><input id="f_pct" type="number" min="50" max="100" inputmode="numeric"><small>Percent of the last fill used. 75 to 80 is common; your pharmacy can tell you.</small></label>
+          <label class="field" for="f_recount"><span>Remind me to recount after</span><input id="f_recount" type="number" min="7" max="365" inputmode="numeric"><small>Days since the last hand count. Missed or extra doses make the estimate drift, so a count now and then keeps the dates right.</small></label>
         </div>
       </details>
       <div class="actions">
@@ -334,6 +347,7 @@ details[open] > summary { margin-bottom: 12px; }
         <button type="button" data-act="medlist">Medication list for appointments</button>
         <button type="button" data-act="calendarAll">Add all order dates to my calendar</button>
       </div>
+      <label class="check" for="privateCal"><input id="privateCal" type="checkbox"> Keep calendar reminders private <small class="note">(no medicine names, pharmacy or Rx numbers; this device only)</small></label>
       <div class="row">
         <button type="button" data-act="backup">Save a backup</button>
         <span class="btn file-btn">Restore a backup<input type="file" id="restoreFile" accept=".json,application/json" aria-label="Restore a backup file"></span>
@@ -359,13 +373,14 @@ details[open] > summary { margin-bottom: 12px; }
           <p>Medicines that need a new prescription each fill (or have no refills left) show <b>Contact prescriber</b> a week before the order date, so the office has time to send it.</p>
           <p><b>I requested a refill</b> and <b>It’s ready for pickup</b> record where a refill stands, so you can see whether you already called it in. The count only goes up when you tap <b>Picked up a refill</b>, and the card stays urgent if the supply is about to run out.</p>
           <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count is at or below the number you choose.</p>
+          <p><b>Days left</b> and <b>Estimated left</b> are estimates: they assume every dose is taken as scheduled. Each card shows when it was last counted by hand, and after 90 days (you can change this under Timing) it asks for a quick recount.</p>
         </div>
       </details>
       <details>
         <summary>Privacy and limits</summary>
         <div class="note" style="display:grid;gap:8px">
           <p>Your list is stored only in this browser on this device. Medicine Shelf does not send it to any server, your doctor or the people who host this page.</p>
-          <p>Anything you export leaves the app: backup files, calendar entries and printed lists can show your medicines to whoever sees them. Keep them somewhere private.</p>
+          <p>Anything you export leaves the app: backup files, calendar entries and printed lists can show your medicines to whoever sees them. Keep them somewhere private. If others can see your calendar, turn on <b>Keep calendar reminders private</b>: reminders then just say "Check medicine supply".</p>
           <p>Because it lives on this device, it does not sync between phones, and clearing your browser data erases it. Save a backup now and then.</p>
           <p>Medicine Shelf tracks supply only. It does not give medical or dosing advice, and its dates are estimates. Always follow your prescription label, your pharmacist and your doctor.</p>
         </div>

@@ -2,7 +2,8 @@
 // Dates are local calendar days as 'YYYY-MM-DD' strings. Times are pinned to noon so daylight-saving shifts never move a day.
 (function (root) {
   'use strict';
-  const DEFAULTS = { leadDays: 3, bufferDays: 7, eligiblePct: 75, fillDays: 30 };
+  const DEFAULTS = { leadDays: 3, bufferDays: 7, eligiblePct: 75, fillDays: 30, recountDays: 90 };
+  const RECOUNT_MIN = 7, RECOUNT_MAX = 365; // allowed range for "remind me to recount after N days"
   const SCRIPT_LEAD_DAYS = 7; // ask the prescriber this many days before the order date
 
   const pad = (n) => String(n).padStart(2, '0');
@@ -47,6 +48,7 @@
   const EXPIRY_SOON_DAYS = 30;
   function live(m, t) {
     const out = baseLive(m, t);
+    out.supply = out.action; // what the supply alone calls for, before a refill stage or expiry takes over the label
     // Expiry (optional): an expired medicine is always urgent; one expiring within 30 days is 'soon'
     // unless something more urgent is already showing.
     if (isDateStr(m.expiresOn)) {
@@ -112,6 +114,51 @@
     return out;
   }
 
+  // ---- Counts drift: when was this last counted by hand? ----
+  // verifiedOn is the last physical count (a pickup moves countedOn but not verifiedOn); older lists only have countedOn.
+  const lastCounted = (m) => (isDateStr(m.verifiedOn) ? m.verifiedOn : m.countedOn);
+  // Scheduled medicines only: their count is an estimate that drifts with missed or extra doses.
+  // due: it has been at least recountDays (default 90) since the last hand count.
+  function recountDue(m, t) {
+    if (!isScheduled(m)) return null;
+    const since = lastCounted(m), days = diff(since, t);
+    return { since, days, due: days >= val(m, 'recountDays') };
+  }
+  // "today", "yesterday", "5 days ago", "about 3 weeks ago", "about 4 months ago".
+  function agoText(from, t) {
+    const n = diff(from, t);
+    if (n <= 0) return 'today';
+    if (n === 1) return 'yesterday';
+    if (n < 14) return `${n} days ago`;
+    if (n < 60) return `about ${Math.round(n / 7)} weeks ago`;
+    if (n < 730) return `about ${Math.round(n / 30.44)} months ago`;
+    return `about ${Math.round(n / 365.25)} years ago`;
+  }
+
+  // ---- What needs doing today ----
+  // rows: [{ m, l }] for medicines shown as normal cards (l = live(m, t)); broken: [{ m, why }] for "Needs fixing" cards.
+  // Returns [{ id, kind, days? }], most pressing first. kind:
+  //   'order'    call the pharmacy to reorder          'script'  contact the prescriber (new prescription needed)
+  //   'check'    a refill requested 5+ days ago, or the supply is about to run out while it's requested
+  //   'pickup'   a refill is ready                     'expired' replace an expired medicine
+  //   'fix'      a damaged entry                       'recount' time for a hand count (only when nothing else is due for it)
+  const STALE_REQUEST_DAYS = 5;
+  const TODO_RANK = { order: 0, script: 0, check: 1, pickup: 2, fix: 3, expired: 4, recount: 5 };
+  function todoList(rows, broken, t) {
+    const out = [];
+    for (const { m, why } of broken || []) out.push({ id: m.id, kind: 'fix', why });
+    for (const { m, l } of rows || []) {
+      const before = out.length;
+      if (l.refillStage === 'ready') out.push({ id: m.id, kind: 'pickup', days: l.stageDays });
+      else if (l.refillStage === 'requested') { if (l.stageDays >= STALE_REQUEST_DAYS || l.stageUrgent) out.push({ id: m.id, kind: 'check', days: l.stageDays }); }
+      else if (l.supply === 'order' || l.supply === 'script') out.push({ id: m.id, kind: l.p.needsScript ? 'script' : 'order' });
+      if (l.expiresIn != null && l.expiresIn < 0) out.push({ id: m.id, kind: 'expired' });
+      const rc = out.length === before ? recountDue(m, t) : null;
+      if (rc && rc.due) out.push({ id: m.id, kind: 'recount', days: rc.days });
+    }
+    return out.map((x, i) => [x, i]).sort((a, b) => TODO_RANK[a[0].kind] - TODO_RANK[b[0].kind] || a[1] - b[1]).map((x) => x[0]);
+  }
+
   // ---- Checking saved lists and backup files: the same rules for both ----
 
   // Fixes the optional fields of one medicine that are broken (a bad date, a negative number, a refill
@@ -125,6 +172,7 @@
     for (const k of ['leadDays', 'bufferDays']) if (c[k] != null && !isCount(c[k])) delete c[k];
     if (c.fillDays != null && !(isCount(c.fillDays) && c.fillDays > 0)) delete c.fillDays; // 0 days would mean "refill at once"
     if (c.eligiblePct != null && !(isCount(c.eligiblePct) && c.eligiblePct >= 50 && c.eligiblePct <= 100)) delete c.eligiblePct;
+    if (c.recountDays != null) { if (isCount(c.recountDays) && c.recountDays >= RECOUNT_MIN && c.recountDays <= RECOUNT_MAX) c.recountDays = Math.round(c.recountDays); else delete c.recountDays; }
     if (c.refill) {
       const r = c.refill;
       if (!(r && ['requested', 'ready'].includes(r.stage) && isDateStr(r.requestedOn))) c.refill = null;
@@ -196,7 +244,7 @@
       && diff(prev.savedOn, t) >= 0 && diff(prev.savedOn, t) <= UNDO_DAYS);
   }
 
-  const api = { EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, suggestedPickup, round2, isDateStr, isCount, normalizeMed, medProblem, cleanList, cleanBackupData };
+  const api = { RECOUNT_MIN, RECOUNT_MAX, STALE_REQUEST_DAYS, lastCounted, recountDue, agoText, todoList, EXPIRY_SOON_DAYS, parseSaved, previousOffered, UNDO_DAYS, DEFAULTS, SCRIPT_LEAD_DAYS, pad, toStr, parse, addDays, diff, maxDate, val, isScheduled, needsScript, plan, live, estimateOn, applyPickup, suggestedPickup, round2, isDateStr, isCount, normalizeMed, medProblem, cleanList, cleanBackupData };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ShelfMath = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -288,5 +288,53 @@ test('checks: the list on the phone keeps damaged medicines so they can be fixed
   assert.equal(SM.cleanBackupData(data).meds.length, 0);       // a backup with these leaves them out
 });
 
+test('recount reminder: 90 days by default, per medicine, from the last hand count', () => {
+  const t = '2026-10-20';
+  const m = { perDay: 1, onHand: 200, countedOn: '2026-10-01', verifiedOn: '2026-07-22' }; // a pickup on Oct 1 moved countedOn only
+  assert.deepEqual(SM.recountDue(m, t), { since: '2026-07-22', days: 90, due: true });
+  assert.equal(SM.recountDue({ ...m, recountDays: 120 }, t).due, false);
+  assert.equal(SM.recountDue({ ...m, verifiedOn: undefined }, t).since, '2026-10-01'); // older lists: falls back to countedOn
+  assert.equal(SM.recountDue({ perDay: 0, prn: true, onHand: 2, countedOn: '2026-01-01' }, t), null); // as-needed: no estimate to drift
+  // A saved setting outside 7..365 days (or not a number) falls back to the default; inside, it is rounded.
+  assert.equal(SM.normalizeMed({ recountDays: 3 }).recountDays, undefined);
+  assert.equal(SM.normalizeMed({ recountDays: 'x' }).recountDays, undefined);
+  assert.equal(SM.normalizeMed({ recountDays: 45.4 }).recountDays, 45);
+});
+
+test('"last counted" wording', () => {
+  const t = '2026-10-20';
+  assert.equal(SM.agoText('2026-10-20', t), 'today');
+  assert.equal(SM.agoText('2026-10-19', t), 'yesterday');
+  assert.equal(SM.agoText('2026-10-07', t), '13 days ago');
+  assert.equal(SM.agoText('2026-10-06', t), 'about 2 weeks ago');
+  assert.equal(SM.agoText('2026-07-22', t), 'about 3 months ago');
+  assert.equal(SM.agoText('2024-10-20', t), 'about 2 years ago');
+});
+
+test('needs doing today: one line per thing to do, most pressing first', () => {
+  const t = '2026-10-20';
+  const row = (m) => ({ m, l: SM.live(m, t) });
+  const base = { perDay: 1, countedOn: t, verifiedOn: t };
+  const rows = [
+    row({ id: 'fine', ...base, onHand: 200 }),                                                   // nothing to do
+    row({ id: 'recount', ...base, onHand: 200, verifiedOn: '2026-06-01' }),                     // recount due
+    row({ id: 'order', ...base, onHand: 5 }),                                                    // order now
+    row({ id: 'script', ...base, onHand: 15, controlled: true }),                               // contact prescriber (a week ahead)
+    row({ id: 'ready', ...base, onHand: 50, refill: { stage: 'ready', requestedOn: '2026-10-15', readyOn: '2026-10-18' } }),
+    row({ id: 'waiting', ...base, onHand: 50, refill: { stage: 'requested', requestedOn: '2026-10-18' } }), // 2 days: not yet
+    row({ id: 'stale', ...base, onHand: 50, refill: { stage: 'requested', requestedOn: '2026-10-14' } }),   // 6 days: check
+    row({ id: 'expired', ...base, onHand: 200, expiresOn: '2026-10-01', verifiedOn: '2026-01-01' }),       // expired; no recount line too
+    row({ id: 'inhaler', perDay: 0, prn: true, minCount: 1, onHand: 1, countedOn: t }),         // as needed, at the reorder number
+  ];
+  const list = SM.todoList(rows, [{ m: { id: 'broken' }, why: 'count' }], t);
+  assert.deepEqual(list.map((x) => `${x.kind}:${x.id}`),
+    ['order:order', 'script:script', 'order:inhaler', 'check:stale', 'pickup:ready', 'fix:broken', 'expired:expired', 'recount:recount']);
+  assert.equal(list.find((x) => x.id === 'stale').days, 6);
+  // A requested refill that is about to run out is checked on right away, not after 5 days.
+  const urgent = SM.todoList([row({ id: 'u', ...base, onHand: 2, refill: { stage: 'requested', requestedOn: t } })], [], t);
+  assert.deepEqual(urgent.map((x) => x.kind), ['check']);
+  assert.deepEqual(SM.todoList([rows[0]], [], t), []);
+});
+
 console.log(`${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('\n' + failures.join('\n\n')); process.exit(1); }

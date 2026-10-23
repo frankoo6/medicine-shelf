@@ -13,6 +13,7 @@ A free, private web app that families install on their phones to track how much 
 | `manifest.webmanifest`, `icon-*.png`, `apple-touch-icon.png` | Let phones install it to the home screen with its own icon |
 | `sw.js` | Lets the app open with no internet |
 | `flyer.html` + `flyer.js` + `qrcode.js` | Printable one-page flyer with a QR code that points to wherever you host the app |
+| `install-guide.html` | Printable family setup guide in large type: open the app, add it to the home screen, add the first person and medicine, save a backup |
 
 ## Hosting it
 
@@ -27,6 +28,10 @@ Opening `index.html` straight from your computer works for a quick look, but it 
 ## The flyer
 
 Open `flyer.html` from your hosted link (for example `https://yourname.github.io/medicine-shelf/flyer.html`). It fills in the app's link and draws the QR code. **Scan it with a phone before printing a stack**, then print on letter paper. The "Shared by" line is blank so any office can write in its name.
+
+## The setup guide
+
+Open `install-guide.html` from your hosted link (for example `https://yourname.github.io/medicine-shelf/install-guide.html`). It is a large-type walkthrough a family can follow on letter paper: open the app, put it on the home screen, add the first person and medicine, and save a backup. Print it and hand it out with the flyer. The "Shared by" line is blank so any office can write in its name. The app link printed on the guide is the published page, `https://frankoo6.github.io/medicine-shelf/`. The app's first screen and the Tools section each have a small link to this page, and so does the flyer page (on screen only, above the print button).
 
 ## Updating the app later
 

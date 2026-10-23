@@ -1,10 +1,11 @@
-// Tests for the supply and date math in shelf-math.js. No dependencies.
+// Tests for the supply and date math in shelf-math.js, and for the flyer QR link. No dependencies.
 // Run from the repository folder:  TZ=America/New_York node tests/run.mjs
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
 const require = createRequire(import.meta.url);
 const SM = require('../shelf-math.js');
+const flyer = require('../flyer.js');
 
 let passed = 0;
 const failures = [];
@@ -334,6 +335,30 @@ test('needs doing today: one line per thing to do, most pressing first', () => {
   const urgent = SM.todoList([row({ id: 'u', ...base, onHand: 2, refill: { stage: 'requested', requestedOn: t } })], [], t);
   assert.deepEqual(urgent.map((x) => x.kind), ['check']);
   assert.deepEqual(SM.todoList([rows[0]], [], t), []);
+});
+
+test('flyer QR uses the hosted folder, never a placeholder or a file link', () => {
+  const published = 'https://frankoo6.github.io/medicine-shelf/';
+  assert.equal(flyer.PUBLISHED, published);
+  // A local file has no public address, so the QR uses the published app.
+  assert.equal(flyer.flyerQrUrl('file:///Users/office/medicine-shelf/flyer.html'), published);
+  assert.equal(flyer.flyerQrUrl('file:///C:/Users/office/medicine-shelf/flyer.html', ''), published);
+  assert.equal(flyer.flyerQrUrl('file:///Users/office/medicine-shelf/flyer.html', 'https://example.org/medicine-shelf/'), published);
+  // Hosted copies point at their own folder, without the page name or a query string.
+  assert.equal(flyer.flyerQrUrl('https://frankoo6.github.io/medicine-shelf/flyer.html'), 'https://frankoo6.github.io/medicine-shelf/');
+  assert.equal(flyer.flyerQrUrl('https://my-office.netlify.app/tools/medicine-shelf/flyer.html?x=1'), 'https://my-office.netlify.app/tools/medicine-shelf/');
+  assert.equal(flyer.flyerQrUrl('http://localhost:8080/flyer.html', ''), 'http://localhost:8080/');
+  // A link typed into the box is kept when it is a real http(s) address.
+  assert.equal(flyer.flyerQrUrl('file:///tmp/flyer.html', 'https://clinic.example.netlify.app/shelf/'), 'https://clinic.example.netlify.app/shelf/');
+  assert.equal(flyer.flyerQrUrl('file:///tmp/flyer.html', '  https://frankoo6.github.io/medicine-shelf/?ref=clinic  '), 'https://frankoo6.github.io/medicine-shelf/?ref=clinic');
+  // Placeholder hosts and file links are not encoded, even when typed or when that is where the page sits.
+  assert.equal(flyer.flyerQrUrl('https://example.org/medicine-shelf/flyer.html', ''), published);
+  assert.equal(flyer.flyerQrUrl('https://www.example.com/medicine-shelf/flyer.html'), published);
+  assert.equal(flyer.flyerQrUrl('https://EXAMPLE.NET/medicine-shelf/'), published);
+  assert.equal(flyer.flyerQrUrl('https://my-office.netlify.app/flyer.html', 'https://example.org/medicine-shelf/'), 'https://my-office.netlify.app/');
+  assert.equal(flyer.flyerQrUrl('https://my-office.netlify.app/flyer.html', 'file:///tmp/index.html'), 'https://my-office.netlify.app/');
+  assert.equal(flyer.flyerQrUrl('https://my-office.netlify.app/flyer.html', 'not a url'), 'https://my-office.netlify.app/');
+  assert.equal(flyer.flyerQrUrl('not a page'), published);
 });
 
 console.log(`${passed} passed, ${failures.length} failed`);

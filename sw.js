@@ -3,7 +3,7 @@
 // using its current set until the person taps "Reload now" on the "new version is ready" banner, then
 // switches to the whole new set at once, so an old page never runs with newer files.
 // When you change any file, raise the version number at the end of CACHE by one (v12 -> v13).
-const CACHE = 'medicine-shelf-v12';
+const CACHE = 'medicine-shelf-v13';
 const FILES = ['./', './index.html', './shelf-math.js', './app.js', './flyer.html', './flyer.js', './qrcode.js', './install-guide.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {

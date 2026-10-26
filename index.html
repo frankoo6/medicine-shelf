@@ -75,7 +75,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.danger { color: var(--now); border-color: var(--now); background: transparent; }
 /* Link-style buttons are still 44px tall so they are easy to tap. */
 button.link { border: none; background: none; padding: 8px 4px; min-height: 44px; display: inline-flex; align-items: center; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, .btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+a:focus-visible, textarea:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, .btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 
 .banner { background: var(--accent-soft); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 8px; }
@@ -258,6 +258,21 @@ details[open] > summary { margin-bottom: 12px; }
       <div class="tally ok"><span class="eyebrow">Stocked</span><b id="cOk">0</b></div>
     </section>
 
+    <section class="panel noprint" aria-labelledby="backupStatusH">
+      <h2 id="backupStatusH">Keep your list safe</h2>
+      <p id="backupStatus" class="note"></p>
+      <div class="actions"><button type="button" data-act="backup">Save a backup</button></div>
+      <details>
+        <summary>How to save and recover your list</summary>
+        <ol class="note">
+          <li>Tap <b>Save a backup</b> and keep the file in a private location you can reach if this phone is lost.</li>
+          <li>Check that the file is there, then choose <b>Yes, I kept it</b> below.</li>
+          <li>To recover your list, open Tools → <b>Restore a backup</b> and choose that file. Review the date and people before confirming replacement.</li>
+        </ol>
+        <p class="note">The file is not encrypted and includes medicine details. Anyone who can open it can read them. Your list does not sync between phones.</p>
+      </details>
+    </section>
+
     <section class="today noprint" id="today" aria-labelledby="todayH">
       <h2 id="todayH">Needs doing today</h2>
       <ul id="todayList"></ul>
@@ -305,7 +320,7 @@ details[open] > summary { margin-bottom: 12px; }
         <label class="field" for="f_min" id="minWrap" hidden><span>Reorder when you’re down to</span><input id="f_min" type="number" min="0" inputmode="numeric" placeholder="e.g. 10"></label>
         <label class="field" for="f_onHand" id="onHandWrap"><span>How many you have right now</span><input id="f_onHand" type="number" min="0" step="any" inputmode="decimal" required></label>
         <label class="field" for="f_countedOn" id="countedOnWrap"><span>Date counted</span><input id="f_countedOn" type="date" required></label>
-        <p class="note" id="countNote" hidden style="align-self:end">The count isn't changed here. To change it, use Recount or Picked up a refill on the card.</p>
+        <p class="note" id="countNote" hidden style="align-self:end">The count isn't changed here. To change it, use Count and update or Picked up a refill on the card.</p>
         <label class="field" for="f_instructions"><span>How it's taken <small>(for the medication list)</small></span><input id="f_instructions" autocomplete="off" placeholder="e.g. 1 tablet twice a day with food"></label>
       </div>
       <details id="rxDetails">
@@ -374,7 +389,7 @@ details[open] > summary { margin-bottom: 12px; }
           <p>Medicines that need a new prescription each fill (or have no refills left) show <b>Contact prescriber</b> a week before the order date, so the office has time to send it.</p>
           <p><b>I requested a refill</b> and <b>It’s ready for pickup</b> record where a refill stands, so you can see whether you already called it in. The count only goes up when you tap <b>Picked up a refill</b>, and the card stays urgent if the supply is about to run out.</p>
           <p>Medicines taken only as needed don't run on a schedule, so they show as "order now" when the count is at or below the number you choose.</p>
-          <p><b>Days left</b> and <b>Estimated left</b> are estimates: they assume every dose is taken as scheduled. Each card shows when it was last counted by hand, and after 90 days (you can change this under Timing) it asks for a quick recount.</p>
+          <p><b>Estimated days left</b> and <b>Estimated left</b> are estimates: they assume every dose is taken as scheduled. Each card shows when it was last counted by hand, and after 90 days (you can change this under Timing) it asks for a quick recount.</p>
         </div>
       </details>
       <details>
@@ -404,7 +419,7 @@ details[open] > summary { margin-bottom: 12px; }
   </section>
   <div id="printSheets" aria-hidden="true"></div>
 </div>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
 <script src="shelf-math.js"></script>
 <script src="app.js"></script>

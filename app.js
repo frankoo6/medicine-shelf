@@ -144,7 +144,10 @@
     const close = () => { clearTimeout(toastTimer); t.hidden = true; };
     if (extra) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { close(); extra.fn(); } }, extra.label));
     if (undo) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: () => { close(); undo(); } }, 'Undo'));
-    t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), extra ? 12000 : undo ? 9000 : 3200);
+    t.hidden = false; clearTimeout(toastTimer);
+    // Keep actions available until dismissed, including for keyboard and screen-reader users.
+    if (undo || extra) t.append(el('button', { class: 'toast-undo', type: 'button', onclick: close }, 'Dismiss'));
+    else toastTimer = setTimeout(() => (t.hidden = true), 8000);
   }
   function scrollTo(node) { node.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
   function downloadFile(name, text, type) {
@@ -277,14 +280,14 @@
     const facts = el('div', { class: 'facts' });
     const fact = (label, value, big) => el('div', { class: 'fact' + (big ? ' big' : '') }, el('span', { class: 'eyebrow' }, label), el('span', { class: 'v' }, value));
     if (isScheduled(m)) {
-      facts.append(fact('Days left', `≈ ${l.daysLeft}`, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', `≈ ${nice(p.runOut)}`), fact('Estimated left', `≈ ${fmt(l.est)}`));
+      facts.append(fact('Estimated days left', `≈ ${l.daysLeft}`, true), fact('Order on', p.orderOn <= t ? 'Now' : nice(p.orderOn)), fact('Runs out', `≈ ${nice(p.runOut)}`), fact('Estimated left', `≈ ${fmt(l.est)}`));
     } else {
       const ago = SM.agoText(m.countedOn, t);
       facts.append(fact('Last count', fmt(l.est), true), fact('Reorder at or below', m.minCount ?? '—'), fact('Taken', 'As needed'), fact('Counted', ago[0].toUpperCase() + ago.slice(1)));
     }
     // Scheduled cards are estimates from the last hand count; say how old that count is.
     const rc = SM.recountDue(m, t);
-    const basis = rc && !rc.due ? el('p', { class: 'note basis' }, `Estimates. Last counted by hand ${nice(rc.since)} (${SM.agoText(rc.since, t)}).`) : null;
+    const basis = rc ? el('p', { class: 'note basis' }, `Assumes every dose is taken as scheduled. Missed or extra doses change the estimate. Last counted by hand ${nice(rc.since)} (${SM.agoText(rc.since, t)}).`) : null;
     const warns = [];
     if (p.tight) warns.push(el('div', { class: 'warn-line hard' }, p.eligibleConfirmed
       ? `The pharmacy's next refill date is ${nice(p.eligible)}, but it runs out about ${nice(p.runOut)}. Call the pharmacy or prescriber now.`
@@ -328,11 +331,17 @@
       !stage ? el('button', { class: wantsOrder ? 'primary' : '', type: 'button', 'data-key': `${m.id}:requested`, onclick: () => setStage(m, 'requested') }, 'I requested a refill') : null,
       stage === 'requested' ? el('button', { class: 'primary', type: 'button', 'data-key': `${m.id}:ready`, onclick: () => setStage(m, 'ready') }, 'It’s ready for pickup') : null,
       el('button', { class: wantsOrder || stage === 'requested' ? '' : 'primary', type: 'button', 'data-key': `${m.id}:refill`, onclick: () => toggleAction(m.id, 'refill') }, 'Picked up a refill'),
-      el('button', { type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Recount'),
+      el('button', { type: 'button', 'data-key': `${m.id}:recount`, onclick: () => toggleAction(m.id, 'recount') }, 'Count and update'),
       (isScheduled(m) || m.expiresOn) && !stage ? el('button', { type: 'button', 'data-key': `${m.id}:calendar`, onclick: () => addToCalendar([m]) }, 'Add to calendar') : null,
       stage ? el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:cancel`, onclick: () => setStage(m, null) }, 'Cancel request') : null,
       el('button', { class: 'link', type: 'button', 'data-key': `${m.id}:edit`, onclick: () => openMedForm(m) }, 'Edit'));
 
+    for (const button of actions.querySelectorAll('button')) {
+      button.setAttribute('aria-label', `${button.textContent}: ${m.name} for ${personName(m.personId)}`);
+      if (button.dataset.key.endsWith(':recount') || button.dataset.key.endsWith(':refill')) {
+        button.setAttribute('aria-expanded', String(!!openAction && openAction.id === m.id && button.dataset.key.endsWith(':' + openAction.kind)));
+      }
+    }
     const body = el('div', { class: 'label-body' }, facts, basis, progress, warns, meta, actions);
     if (openAction && openAction.id === m.id) body.append(actionForm(m, l, openAction.kind));
     const label = { order: 'Order now', script: 'Contact prescriber', soon: 'Order soon', ok: 'Stocked', requested: 'Requested', ready: 'Ready for pickup', expired: 'Expired', expiring: 'Expires soon' }[l.action];
@@ -436,7 +445,9 @@
 
   function renderTools() {
     const last = state.meta.lastBackup;
-    $('backupInfo').textContent = (last ? `Last backup saved ${nice(last)}. ` : 'No backup saved yet. ') + 'A backup file lists your medicines, prescribers and Rx numbers in plain text: keep it somewhere private.';
+    const changes = state.meta.changesSinceBackup || 0;
+    $('backupStatus').textContent = (last ? `Last backup confirmed saved ${nice(last)}.` : 'No backup confirmed saved yet.') + (changes ? ` ${changes} change${changes === 1 ? '' : 's'} since that backup.` : '') + (state.meta.backupPending ? ' Please confirm below whether you kept the new file.' : '');
+    $('backupInfo').textContent = (last ? `Last backup confirmed saved ${nice(last)}. ` : 'No backup confirmed saved yet. ') + 'A backup file lists your medicines, prescribers and Rx numbers in plain text: keep it somewhere private.';
   }
 
   // ---------- people ----------

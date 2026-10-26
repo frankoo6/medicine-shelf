@@ -69,3 +69,18 @@ Families' data is not affected by updates. It lives in their browser under the k
 ## License
 
 The app is yours to share. `qrcode.js` is by Kazuhiko Arase, MIT license (notice kept at the top of the file).
+
+
+## Usability checks before publishing
+
+Run `node tests/run.mjs`, then check on an iPhone and Android phone:
+
+- Load the example household and check the estimated supply labels and explanations.
+- Use Count and update, save a count, and undo it. Check that keyboard focus follows the form.
+- With a screen reader, distinguish each medicine's actions and hear whether its count/refill form is expanded.
+- Save a backup, cancel sharing, retry, and confirm only after locating the file. Check backup status and the change count.
+- Restore a backup after reviewing its summary, then bring back the earlier list.
+- Check large text, dark mode, narrow screens, file-picker focus, and keyboard focus on help links.
+- Test offline use and an app update that preserves the saved list.
+
+Backup status records user confirmation, not proof that an exported file still exists. Backups remain unencrypted. Undo notifications remain until dismissed or replaced by another notification.
